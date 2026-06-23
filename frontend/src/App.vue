@@ -81,6 +81,17 @@ function formatMessageTime(value) {
   }).format(date)
 }
 
+function formatDate(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date)
+}
+
 function cloneData(value) {
   return JSON.parse(JSON.stringify(value))
 }
@@ -1011,40 +1022,80 @@ if (!conversationSessions.value.length) {
       <div v-if="previewWork" class="modal-backdrop" @click.self="previewWork = null">
         <div class="image-preview-modal">
           <button type="button" class="modal-close" @click="previewWork = null">×</button>
-          <img :src="previewWork.imageUrl" :alt="previewWork.title" />
-          <div class="preview-meta">
-            <div>
-              <strong>{{ previewWork.title }}</strong>
-              <div v-if="previewWork.tags" class="tag-list light">
+          <div class="preview-backdrop-art">
+            <img :src="previewWork.imageUrl" alt="" aria-hidden="true" />
+          </div>
+          <section class="preview-stage">
+            <div class="preview-image-frame">
+              <img :src="previewWork.imageUrl" :alt="previewWork.title" />
+            </div>
+            <div v-if="previewWork.tags" class="preview-tags">
+              <strong>相关标签</strong>
+              <div>
                 <span v-for="tag in previewWork.tags.split(',').filter(Boolean)" :key="tag">{{ tag.trim() }}</span>
               </div>
-              <span>@{{ previewWork.ownerName }} · {{ previewWork.downloadCount }} 下载 · {{ previewWork.likeCount || 0 }} 赞 · {{ previewWork.favoriteCount || 0 }} 收藏 · {{ previewWork.commentCount || 0 }} 评论</span>
             </div>
+          </section>
+          <aside class="preview-side">
+            <div class="preview-info-card">
+              <div>
+                <span>分类</span>
+                <strong>{{ previewWork.title }}</strong>
+              </div>
+              <div>
+                <span>作者</span>
+                <strong>@{{ previewWork.ownerName }}</strong>
+              </div>
+              <div>
+                <span>下载量</span>
+                <strong>{{ previewWork.downloadCount || 0 }}</strong>
+              </div>
+              <div>
+                <span>发布时间</span>
+                <strong>{{ formatDate(previewWork.createdAt) || '-' }}</strong>
+              </div>
+            </div>
+
+            <div class="preview-author-card">
+              <div class="preview-author-avatar">{{ previewWork.ownerName?.slice(0, 1) || 'U' }}</div>
+              <div>
+                <strong>{{ previewWork.ownerName }}</strong>
+                <span>{{ previewWork.likeCount || 0 }} 赞 · {{ previewWork.favoriteCount || 0 }} 收藏 · {{ previewWork.commentCount || 0 }} 评论</span>
+              </div>
+            </div>
+
             <div class="preview-actions">
-              <button :class="{ active: previewWork.liked }" @click="toggleLike(previewWork)">赞</button>
+              <button class="download-main" @click="download(previewWork)">下载</button>
+              <button :class="{ active: previewWork.liked }" @click="toggleLike(previewWork)">赞 {{ previewWork.likeCount || 0 }}</button>
               <button :class="{ active: previewWork.favorited }" @click="toggleFavorite(previewWork)">收藏</button>
-              <button @click="download(previewWork)">下载</button>
+              <button @click="copyPrompt(previewWork)">复制提示词</button>
             </div>
-          </div>
-          <div class="comment-panel">
-            <div class="comment-head">
-              <strong>评论</strong>
-              <span>{{ previewComments.length }} 条</span>
+
+            <div class="preview-prompt-card">
+              <strong>提示词</strong>
+              <p>{{ previewWork.prompt }}</p>
             </div>
-            <div class="comment-list">
-              <p v-if="commentsLoading" class="comment-empty">评论加载中...</p>
-              <article v-for="comment in previewComments" :key="comment.id" class="comment-item">
-                <strong>{{ comment.username }}</strong>
-                <span>{{ formatMessageTime(comment.createdAt) }}</span>
-                <p>{{ comment.content }}</p>
-              </article>
-              <p v-if="!commentsLoading && !previewComments.length" class="comment-empty">暂无评论</p>
+
+            <div class="comment-panel">
+              <div class="comment-head">
+                <strong>评论</strong>
+                <span>{{ previewComments.length }} 条</span>
+              </div>
+              <div class="comment-list">
+                <p v-if="commentsLoading" class="comment-empty">评论加载中...</p>
+                <article v-for="comment in previewComments" :key="comment.id" class="comment-item">
+                  <strong>{{ comment.username }}</strong>
+                  <span>{{ formatMessageTime(comment.createdAt) }}</span>
+                  <p>{{ comment.content }}</p>
+                </article>
+                <p v-if="!commentsLoading && !previewComments.length" class="comment-empty">暂无评论</p>
+              </div>
+              <form class="comment-form" @submit.prevent="submitComment">
+                <input v-model="commentText" placeholder="写下你的评论" />
+                <button type="submit">发送</button>
+              </form>
             </div>
-            <form class="comment-form" @submit.prevent="submitComment">
-              <input v-model="commentText" placeholder="写下你的评论" />
-              <button type="submit">发送</button>
-            </form>
-          </div>
+          </aside>
         </div>
       </div>
     </transition>

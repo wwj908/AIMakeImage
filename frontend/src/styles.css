@@ -1221,6 +1221,18 @@ p {
   color: #1f2329;
 }
 
+.image-preview-modal > .modal-close {
+  z-index: 4;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  backdrop-filter: blur(12px);
+}
+
+.image-preview-modal > .modal-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
 .modal-head {
   padding-right: 34px;
 }
@@ -1359,71 +1371,251 @@ p {
 
 .image-preview-modal {
   position: relative;
-  width: min(880px, calc(100vw - 36px));
-  max-height: calc(100vh - 36px);
-  overflow: auto;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 24px 80px rgba(20, 24, 31, 0.22);
+  isolation: isolate;
+  display: grid;
+  width: min(1440px, calc(100vw - 28px));
+  height: min(820px, calc(100vh - 28px));
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 28px;
+  background: rgba(10, 12, 14, 0.48);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.46);
+  color: #ffffff;
 }
 
-.image-preview-modal img {
-  display: block;
+.preview-backdrop-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.preview-backdrop-art img {
   width: 100%;
-  max-height: calc(100vh - 140px);
-  object-fit: contain;
-  background: #f5f6f8;
+  height: 100%;
+  opacity: 1;
+  filter: blur(10px) brightness(1.08) saturate(1.32);
+  object-fit: cover;
+  transform: scale(1.045);
 }
 
-.preview-meta {
+.preview-backdrop-art::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.16), transparent 30%),
+    radial-gradient(circle at 62% 48%, rgba(255, 255, 255, 0.08), transparent 36%),
+    linear-gradient(90deg, rgba(7, 8, 10, 0.08), rgba(7, 8, 10, 0.4)),
+    linear-gradient(180deg, rgba(7, 8, 10, 0.08), rgba(7, 8, 10, 0.38));
+}
+
+.preview-stage,
+.preview-side {
+  position: relative;
+  z-index: 1;
+}
+
+.preview-stage {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 22px;
+  padding: 54px 0 42px 54px;
+}
+
+.preview-image-frame {
+  display: grid;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 0;
+  justify-self: center;
+  place-items: center;
+  border: 7px solid rgba(255, 255, 255, 0.82);
+  border-radius: 24px;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.38);
+  overflow: hidden;
+}
+
+.preview-image-frame img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 220px);
+  object-fit: contain;
+}
+
+.preview-tags {
+  display: grid;
+  gap: 12px;
+}
+
+.preview-tags strong {
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.preview-tags div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.preview-tags span {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+  padding: 8px 13px;
+  font-size: 13px;
+  font-weight: 800;
+  backdrop-filter: blur(10px);
+}
+
+.preview-side {
+  display: grid;
+  min-height: 0;
+  align-content: center;
+  gap: 18px;
+  padding: 54px 54px 42px 0;
+}
+
+.preview-info-card,
+.preview-prompt-card,
+.comment-panel {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 22px;
+  background: rgba(26, 29, 31, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 50px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.preview-info-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 18px;
+  padding: 24px;
+}
+
+.preview-info-card span,
+.preview-author-card span,
+.preview-prompt-card p,
+.comment-head span,
+.comment-empty,
+.comment-item span {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.preview-info-card span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.preview-info-card strong {
+  display: block;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-author-card {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 16px 20px 18px;
+  padding: 0 18px;
+}
+
+.preview-author-avatar {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.preview-author-card strong,
+.preview-prompt-card strong,
+.comment-head strong {
+  display: block;
+  color: #ffffff;
+}
+
+.preview-author-card span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 .preview-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 20px 0 0;
 }
 
 .preview-actions button,
 .comment-form button {
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
-  background: #f5f6f8;
-  color: #1f2329;
-  padding: 9px 13px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  padding: 10px 15px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 900;
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
 .preview-actions button:hover,
 .comment-form button:hover {
-  background: #eceff4;
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.2);
 }
 
-.preview-meta strong,
-.preview-meta span {
-  display: block;
+.preview-actions .download-main {
+  min-width: 96px;
+  background: #ffffff;
+  color: #11161b;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.24);
 }
 
-.preview-meta strong {
-  color: #1f2329;
-  font-size: 16px;
+.preview-actions button.active {
+  background: #2f66ff;
+  color: #ffffff;
 }
 
-.preview-meta span {
-  color: #8a9099;
+.preview-prompt-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.preview-prompt-card p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
   font-size: 13px;
+  line-height: 1.7;
 }
 
 .comment-panel {
   display: grid;
   gap: 12px;
-  border-top: 1px solid #eaedf2;
-  padding: 0 20px 20px;
+  min-height: 0;
+  padding: 18px 20px 20px;
 }
 
 .comment-head {
@@ -1431,23 +1623,11 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 16px;
-}
-
-.comment-head strong {
-  font-size: 15px;
-}
-
-.comment-head span,
-.comment-empty,
-.comment-item span {
-  color: #8a9099;
-  font-size: 12px;
 }
 
 .comment-list {
   display: grid;
-  max-height: 220px;
+  max-height: 150px;
   overflow: auto;
   gap: 10px;
 }
@@ -1456,18 +1636,18 @@ p {
   display: grid;
   gap: 4px;
   border-radius: 14px;
-  background: #f7f8fa;
+  background: rgba(255, 255, 255, 0.08);
   padding: 10px 12px;
 }
 
 .comment-item strong {
-  color: #1f2329;
+  color: #ffffff;
   font-size: 13px;
 }
 
 .comment-item p {
   margin: 0;
-  color: #4b5563;
+  color: rgba(255, 255, 255, 0.78);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -1475,7 +1655,7 @@ p {
 .comment-empty {
   margin: 0;
   border-radius: 14px;
-  background: #f7f8fa;
+  background: rgba(255, 255, 255, 0.08);
   padding: 14px;
   text-align: center;
 }
@@ -1488,17 +1668,21 @@ p {
 
 .comment-form input {
   width: 100%;
-  border: 1px solid #e5e8ee;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  background: #ffffff;
-  color: #1f2329;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
   outline: none;
   padding: 0 14px;
 }
 
+.comment-form input::placeholder {
+  color: rgba(255, 255, 255, 0.56);
+}
+
 .comment-form input:focus {
-  border-color: #b9c9ff;
-  box-shadow: 0 0 0 4px rgba(47, 102, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1563,6 +1747,24 @@ p {
 
   .works-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .image-preview-modal {
+    height: calc(100vh - 24px);
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .preview-stage {
+    padding: 56px 20px 0;
+  }
+
+  .preview-image-frame img {
+    max-height: 56vh;
+  }
+
+  .preview-side {
+    padding: 0 20px 24px;
   }
 }
 
