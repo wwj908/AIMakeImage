@@ -23,6 +23,9 @@ public class Artwork {
     @Column(nullable = false, length = 120)
     private String title;
 
+    @Column(length = 300)
+    private String tags;
+
     @Column(nullable = false, length = 1200)
     private String prompt;
 
@@ -74,6 +77,14 @@ public class Artwork {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     public String getPrompt() {

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS artworks (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   owner_id BIGINT NOT NULL,
   title VARCHAR(120) NOT NULL,
+  tags VARCHAR(300),
   prompt VARCHAR(1200) NOT NULL,
   negative_prompt VARCHAR(1200),
   mode VARCHAR(24) NOT NULL,
@@ -31,4 +32,18 @@ CREATE TABLE IF NOT EXISTS artworks (
   KEY idx_artworks_owner (owner_id),
   KEY idx_artworks_public_created (public_work, created_at),
   CONSTRAINT fk_artworks_owner FOREIGN KEY (owner_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  owner_id BIGINT NOT NULL,
+  client_id VARCHAR(80) NOT NULL,
+  title VARCHAR(120) NOT NULL,
+  pinned BIT NOT NULL DEFAULT 0,
+  messages_json LONGTEXT NOT NULL,
+  created_at DATETIME,
+  updated_at DATETIME,
+  UNIQUE KEY idx_chat_sessions_owner_client (owner_id, client_id),
+  KEY idx_chat_sessions_owner_updated (owner_id, updated_at),
+  CONSTRAINT fk_chat_sessions_owner FOREIGN KEY (owner_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

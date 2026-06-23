@@ -25,6 +25,12 @@ public class ArtworkDtos {
     public record PublishRequest(Boolean publicWork) {
     }
 
+    public record MetadataRequest(
+            @NotBlank @Size(max = 120) String title,
+            @Size(max = 300) String tags
+    ) {
+    }
+
     public record CommentRequest(@NotBlank @Size(max = 500) String content) {
     }
 
@@ -42,6 +48,7 @@ public class ArtworkDtos {
             Long ownerId,
             String ownerName,
             String title,
+            String tags,
             String prompt,
             String negativePrompt,
             String mode,

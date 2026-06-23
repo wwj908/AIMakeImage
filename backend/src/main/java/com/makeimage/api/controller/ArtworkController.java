@@ -46,6 +46,14 @@ public class ArtworkController {
         return ApiResponse.ok(artworkService.setPublic(SecurityUtils.currentUser(), id, Boolean.TRUE.equals(request.publicWork())));
     }
 
+    @PatchMapping("/artworks/{id}/metadata")
+    public ApiResponse<ArtworkDtos.ArtworkView> metadata(
+            @PathVariable Long id,
+            @Valid @RequestBody ArtworkDtos.MetadataRequest request
+    ) {
+        return ApiResponse.ok(artworkService.updateMetadata(SecurityUtils.currentUser(), id, request));
+    }
+
     @GetMapping("/public/artworks")
     public ApiResponse<Page<ArtworkDtos.ArtworkView>> publicWorks(
             @RequestParam(defaultValue = "0") int page,

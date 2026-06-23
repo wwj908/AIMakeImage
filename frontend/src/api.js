@@ -82,6 +82,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ publicWork })
   }),
+  updateMetadata: (id, data) => request(`/api/artworks/${id}/metadata`, {
+    method: 'PATCH',
+    body: JSON.stringify(data)
+  }),
   addDownload: (id) => request(`/api/public/artworks/${id}/download`, { method: 'POST' }),
   like: (id) => request(`/api/artworks/${id}/like`, { method: 'POST' }),
   favorite: (id) => request(`/api/artworks/${id}/favorite`, { method: 'POST' }),
@@ -89,5 +93,19 @@ export const api = {
   addComment: (id, content) => request(`/api/artworks/${id}/comments`, {
     method: 'POST',
     body: JSON.stringify({ content })
-  })
+  }),
+  chatSessions: () => request('/api/chat-sessions'),
+  saveChatSession: (data) => request('/api/chat-sessions', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  renameChatSession: (clientId, title) => request(`/api/chat-sessions/${encodeURIComponent(clientId)}/rename`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title })
+  }),
+  pinChatSession: (clientId, pinned) => request(`/api/chat-sessions/${encodeURIComponent(clientId)}/pin`, {
+    method: 'PATCH',
+    body: JSON.stringify({ pinned })
+  }),
+  deleteChatSession: (clientId) => request(`/api/chat-sessions/${encodeURIComponent(clientId)}`, { method: 'DELETE' })
 }

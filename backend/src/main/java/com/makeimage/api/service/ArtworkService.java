@@ -110,6 +110,14 @@ public class ArtworkService {
     }
 
     @Transactional
+    public ArtworkDtos.ArtworkView updateMetadata(CurrentUser currentUser, Long id, ArtworkDtos.MetadataRequest request) {
+        Artwork artwork = ownedArtwork(currentUser, id);
+        artwork.setTitle(request.title().trim());
+        artwork.setTags(normalizeTags(request.tags()));
+        return toView(artworkRepository.saveAndFlush(artwork), currentUser);
+    }
+
+    @Transactional
     public ArtworkDtos.ArtworkView addDownload(Long id) {
         Artwork artwork = publicArtwork(id);
         artwork.setDownloadCount(artwork.getDownloadCount() + 1);
@@ -218,6 +226,7 @@ public class ArtworkService {
                 artwork.getOwner().getId(),
                 artwork.getOwner().getUsername(),
                 artwork.getTitle(),
+                artwork.getTags(),
                 artwork.getPrompt(),
                 artwork.getNegativePrompt(),
                 artwork.getMode(),
@@ -242,5 +251,12 @@ public class ArtworkService {
                 comment.getContent(),
                 comment.getCreatedAt()
         );
+    }
+
+    private String normalizeTags(String tags) {
+        if (tags == null || tags.isBlank()) {
+            return null;
+        }
+        return tags.trim().replace('，', ',');
     }
 }

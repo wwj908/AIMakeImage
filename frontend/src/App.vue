@@ -17,12 +17,16 @@ const previewWork = ref(null)
 const previewComments = ref([])
 const commentText = ref('')
 const commentsLoading = ref(false)
+const editingWork = ref(null)
+const metadataForm = reactive({ title: '', tags: '' })
 const conversation = ref([])
 const conversationSessions = ref(loadSessions())
 const currentSessionId = ref(conversationSessions.value[0]?.id || null)
 const publicCarouselIndex = ref(0)
 const sessionMenuId = ref(null)
 let publicCarouselTimer = null
+let syncingSessions = false
+let sessionSaveTimer = null
 
 const auth = reactive({ username: '', email: '', account: '', password: '' })
 const form = reactive({
@@ -81,9 +85,13 @@ function cloneData(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+function sessionStorageKey() {
+  return state.user?.id ? `${SESSION_STORAGE_KEY}:${state.user.id}` : SESSION_STORAGE_KEY
+}
+
 function loadSessions() {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    const raw = localStorage.getItem(sessionStorageKey())
     const sessions = raw ? JSON.parse(raw) : []
     return Array.isArray(sessions) ? sessions : []
   } catch (_) {
@@ -92,7 +100,95 @@ function loadSessions() {
 }
 
 function persistSessions() {
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(conversationSessions.value))
+  localStorage.setItem(sessionStorageKey(), JSON.stringify(conversationSessions.value))
+}
+
+function parseServerSession(session) {
+  let messages = []
+  try {
+    const parsed = JSON.parse(session.messagesJson || '[]')
+    messages = Array.isArray(parsed) ? parsed : []
+  } catch (_) {
+    messages = []
+  }
+  return {
+    id: session.clientId,
+    serverId: session.id,
+    title: session.title || '新对话',
+    pinned: Boolean(session.pinned),
+    updatedAt: Date.parse(session.updatedAt || session.createdAt) || Date.now(),
+    messages
+  }
+}
+
+function sessionPayload(session) {
+  return {
+    clientId: session.id,
+    title: session.title || '新对话',
+    pinned: Boolean(session.pinned),
+    messagesJson: JSON.stringify(session.messages || [])
+  }
+}
+
+function replaceSession(updatedSession) {
+  conversationSessions.value = conversationSessions.value.map((item) => {
+    if (item.id !== updatedSession.id) return item
+    return { ...item, ...updatedSession }
+  })
+  if (!conversationSessions.value.some((item) => item.id === updatedSession.id)) {
+    conversationSessions.value = [updatedSession, ...conversationSessions.value]
+  }
+}
+
+async function saveSessionToServer(session) {
+  if (!loggedIn.value || !session) return
+  try {
+    const saved = await api.saveChatSession(sessionPayload(session))
+    const normalized = parseServerSession(saved)
+    replaceSession({ ...session, serverId: normalized.serverId, updatedAt: normalized.updatedAt })
+    persistSessions()
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+function queueSaveSession(session) {
+  if (!loggedIn.value || !session || syncingSessions) return
+  if (sessionSaveTimer) window.clearTimeout(sessionSaveTimer)
+  sessionSaveTimer = window.setTimeout(() => {
+    saveSessionToServer(session)
+  }, 280)
+}
+
+async function loadChatSessions() {
+  if (!loggedIn.value) {
+    conversationSessions.value = loadSessions()
+    if (!conversationSessions.value.length) ensureSession(true)
+    currentSessionId.value = conversationSessions.value[0]?.id || null
+    conversation.value = cloneData(conversationSessions.value[0]?.messages || [])
+    return
+  }
+  syncingSessions = true
+  try {
+    const serverSessions = await api.chatSessions()
+    const localSessions = loadSessions()
+    if (serverSessions.length) {
+      conversationSessions.value = serverSessions.map(parseServerSession)
+    } else {
+      conversationSessions.value = localSessions.length ? localSessions : []
+      await Promise.all(conversationSessions.value.map((session) => saveSessionToServer(session)))
+    }
+    if (!conversationSessions.value.length) {
+      ensureSession(true)
+    }
+    currentSessionId.value = conversationSessions.value[0]?.id || null
+    conversation.value = cloneData(conversationSessions.value[0]?.messages || [])
+    persistSessions()
+  } catch (error) {
+    toast(error.message)
+  } finally {
+    syncingSessions = false
+  }
 }
 
 function summarizeSession(messages) {
@@ -118,6 +214,7 @@ function ensureSession(forceNew = false) {
   conversationSessions.value = [session, ...conversationSessions.value]
   currentSessionId.value = session.id
   persistSessions()
+  queueSaveSession(session)
   return session
 }
 
@@ -134,6 +231,7 @@ function syncSessionFromConversation() {
     ...conversationSessions.value.filter((item) => item.id !== next.id)
   ]
   persistSessions()
+  queueSaveSession(next)
 }
 
 function openSession(sessionId) {
@@ -155,16 +253,25 @@ function toggleSessionMenu(sessionId) {
   sessionMenuId.value = sessionMenuId.value === sessionId ? null : sessionId
 }
 
-function pinSession(sessionId) {
-  conversationSessions.value = conversationSessions.value.map((item) => {
-    if (item.id !== sessionId) return item
-    return { ...item, pinned: !item.pinned, updatedAt: Date.now() }
-  })
+async function pinSession(sessionId) {
+  const session = conversationSessions.value.find((item) => item.id === sessionId)
+  if (!session) return
+  const nextPinned = !session.pinned
+  const nextSession = { ...session, pinned: nextPinned, updatedAt: Date.now() }
+  replaceSession(nextSession)
   persistSessions()
   sessionMenuId.value = null
+  if (!loggedIn.value) return
+  try {
+    const saved = await api.pinChatSession(sessionId, nextPinned)
+    replaceSession(parseServerSession(saved))
+    persistSessions()
+  } catch (error) {
+    toast(error.message)
+  }
 }
 
-function renameSession(sessionId) {
+async function renameSession(sessionId) {
   const session = conversationSessions.value.find((item) => item.id === sessionId)
   if (!session) return
   const nextTitle = window.prompt('重命名会话', session.title)
@@ -174,19 +281,32 @@ function renameSession(sessionId) {
     toast('名称不能为空')
     return
   }
-  conversationSessions.value = conversationSessions.value.map((item) => {
-    if (item.id !== sessionId) return item
-    return { ...item, title: trimmed, updatedAt: Date.now() }
-  })
+  replaceSession({ ...session, title: trimmed, updatedAt: Date.now() })
   persistSessions()
   sessionMenuId.value = null
+  if (!loggedIn.value) return
+  try {
+    const saved = await api.renameChatSession(sessionId, trimmed)
+    replaceSession(parseServerSession(saved))
+    persistSessions()
+  } catch (error) {
+    toast(error.message)
+  }
 }
 
-function deleteSession(sessionId) {
+async function deleteSession(sessionId) {
   const session = conversationSessions.value.find((item) => item.id === sessionId)
   if (!session) return
   const confirmed = window.confirm(`删除会话“${session.title}”？`)
   if (!confirmed) return
+  if (loggedIn.value) {
+    try {
+      await api.deleteChatSession(sessionId)
+    } catch (error) {
+      toast(error.message)
+      return
+    }
+  }
   const nextSessions = conversationSessions.value.filter((item) => item.id !== sessionId)
   conversationSessions.value = nextSessions
   if (currentSessionId.value === sessionId) {
@@ -365,6 +485,7 @@ async function submitAuth() {
     setAuth(res)
     toast(authMode.value === 'login' ? '欢迎回来' : '注册成功')
     showAuthModal.value = false
+    await loadChatSessions()
     await refresh()
   } catch (error) {
     authError.value = error.message
@@ -437,6 +558,32 @@ async function togglePublish(work) {
     Object.assign(work, updated)
     syncArtworkState(updated)
     toast(targetPublic ? '已公开发布' : '已取消公开')
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+function openMetadataEditor(work) {
+  editingWork.value = work
+  metadataForm.title = work.title || ''
+  metadataForm.tags = work.tags || ''
+}
+
+async function saveMetadata() {
+  if (!editingWork.value) return
+  const title = metadataForm.title.trim()
+  if (!title) {
+    toast('请输入作品标题')
+    return
+  }
+  try {
+    const updated = await api.updateMetadata(editingWork.value.id, {
+      title,
+      tags: metadataForm.tags.trim()
+    })
+    syncArtworkState(updated)
+    editingWork.value = null
+    toast('作品信息已保存')
   } catch (error) {
     toast(error.message)
   }
@@ -544,6 +691,10 @@ async function copyPrompt(work) {
 function logout() {
   clearAuth()
   myWorks.value = []
+  conversationSessions.value = loadSessions()
+  currentSessionId.value = conversationSessions.value[0]?.id || null
+  conversation.value = cloneData(conversationSessions.value[0]?.messages || [])
+  if (!conversationSessions.value.length) ensureSession(true)
   activeTab.value = 'create'
   toast('已退出登录')
 }
@@ -565,10 +716,16 @@ watch(conversation, () => {
   syncSessionFromConversation()
 }, { deep: true })
 
-onMounted(refresh)
+onMounted(async () => {
+  await loadChatSessions()
+  await refresh()
+})
 onUnmounted(() => {
   if (publicCarouselTimer) {
     window.clearInterval(publicCarouselTimer)
+  }
+  if (sessionSaveTimer) {
+    window.clearTimeout(sessionSaveTimer)
   }
   sessionMenuId.value = null
 })
@@ -614,13 +771,13 @@ if (!conversationSessions.value.length) {
         >
           <button class="session-link" @click="openSession(session.id)">
             <span class="session-title">{{ session.title }}</span>
-            <span v-if="session.pinned" class="session-pin">缃《</span>
+            <span v-if="session.pinned" class="session-pin">置顶</span>
           </button>
           <button class="session-more" type="button" @click.stop="toggleSessionMenu(session.id)">•••</button>
           <div v-if="sessionMenuId === session.id" class="session-menu">
             <button type="button" @click="pinSession(session.id)">{{ session.pinned ? '取消置顶' : '置顶' }}</button>
             <button type="button" @click="renameSession(session.id)">重命名</button>
-            <button type="button" class="danger" @click="deleteSession(session.id)">鍒犻櫎</button>
+            <button type="button" class="danger" @click="deleteSession(session.id)">删除</button>
           </div>
         </div>
         <span v-if="!conversationSessions.length">暂无会话记录</span>
@@ -806,12 +963,16 @@ if (!conversationSessions.value.length) {
               <button @click="openPreview(work)">评论 {{ work.commentCount || 0 }}</button>
               <button @click="copyPrompt(work)">复制提示词</button>
               <button @click="download(work)">下载</button>
+              <button v-if="activeTab === 'mine'" type="button" @click.stop="openMetadataEditor(work)">编辑信息</button>
               <button v-if="activeTab === 'mine'" type="button" @click.stop="togglePublish(work)">
                 {{ work.publicWork ? '取消公开' : '公开发布' }}
               </button>
             </div>
             <div class="work-info">
               <strong>{{ work.title }}</strong>
+              <div v-if="work.tags" class="tag-list">
+                <span v-for="tag in work.tags.split(',').filter(Boolean)" :key="tag">{{ tag.trim() }}</span>
+              </div>
               <span>@{{ work.ownerName }} · {{ work.downloadCount }} 下载 · {{ work.likeCount || 0 }} 赞 · {{ work.favoriteCount || 0 }} 收藏 · {{ work.commentCount || 0 }} 评论</span>
             </div>
           </article>
@@ -854,6 +1015,9 @@ if (!conversationSessions.value.length) {
           <div class="preview-meta">
             <div>
               <strong>{{ previewWork.title }}</strong>
+              <div v-if="previewWork.tags" class="tag-list light">
+                <span v-for="tag in previewWork.tags.split(',').filter(Boolean)" :key="tag">{{ tag.trim() }}</span>
+              </div>
               <span>@{{ previewWork.ownerName }} · {{ previewWork.downloadCount }} 下载 · {{ previewWork.likeCount || 0 }} 赞 · {{ previewWork.favoriteCount || 0 }} 收藏 · {{ previewWork.commentCount || 0 }} 评论</span>
             </div>
             <div class="preview-actions">
@@ -882,6 +1046,27 @@ if (!conversationSessions.value.length) {
             </form>
           </div>
         </div>
+      </div>
+    </transition>
+
+    <transition name="modal">
+      <div v-if="editingWork" class="modal-backdrop" @click.self="editingWork = null">
+        <form class="metadata-modal" @submit.prevent="saveMetadata">
+          <button type="button" class="modal-close" @click="editingWork = null">×</button>
+          <div class="modal-head">
+            <h2>编辑作品信息</h2>
+            <p>为自己的作品补充标题和标签，标签用逗号分隔</p>
+          </div>
+          <label>
+            <span>标题</span>
+            <input v-model="metadataForm.title" maxlength="120" placeholder="输入作品标题" />
+          </label>
+          <label>
+            <span>标签</span>
+            <input v-model="metadataForm.tags" maxlength="300" placeholder="例如：人像, 海边, 电影感" />
+          </label>
+          <button class="modal-submit" type="submit">保存</button>
+        </form>
       </div>
     </transition>
   </main>
