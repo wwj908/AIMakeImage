@@ -785,6 +785,13 @@ p {
   background: #eceff4;
 }
 
+.result-actions button.active,
+.work-mask button.active,
+.preview-actions button.active {
+  background: #2f66ff;
+  color: #ffffff;
+}
+
 .result-info {
   display: flex;
   align-items: center;
@@ -1292,7 +1299,7 @@ p {
   position: relative;
   width: min(880px, calc(100vw - 36px));
   max-height: calc(100vh - 36px);
-  overflow: hidden;
+  overflow: auto;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 24px 80px rgba(20, 24, 31, 0.22);
@@ -1314,6 +1321,27 @@ p {
   padding: 16px 20px 18px;
 }
 
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preview-actions button,
+.comment-form button {
+  border-radius: 999px;
+  background: #f5f6f8;
+  color: #1f2329;
+  padding: 9px 13px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.preview-actions button:hover,
+.comment-form button:hover {
+  background: #eceff4;
+}
+
 .preview-meta strong,
 .preview-meta span {
   display: block;
@@ -1327,6 +1355,88 @@ p {
 .preview-meta span {
   color: #8a9099;
   font-size: 13px;
+}
+
+.comment-panel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #eaedf2;
+  padding: 0 20px 20px;
+}
+
+.comment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.comment-head strong {
+  font-size: 15px;
+}
+
+.comment-head span,
+.comment-empty,
+.comment-item span {
+  color: #8a9099;
+  font-size: 12px;
+}
+
+.comment-list {
+  display: grid;
+  max-height: 220px;
+  overflow: auto;
+  gap: 10px;
+}
+
+.comment-item {
+  display: grid;
+  gap: 4px;
+  border-radius: 14px;
+  background: #f7f8fa;
+  padding: 10px 12px;
+}
+
+.comment-item strong {
+  color: #1f2329;
+  font-size: 13px;
+}
+
+.comment-item p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.comment-empty {
+  margin: 0;
+  border-radius: 14px;
+  background: #f7f8fa;
+  padding: 14px;
+  text-align: center;
+}
+
+.comment-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.comment-form input {
+  width: 100%;
+  border: 1px solid #e5e8ee;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f2329;
+  outline: none;
+  padding: 0 14px;
+}
+
+.comment-form input:focus {
+  border-color: #b9c9ff;
+  box-shadow: 0 0 0 4px rgba(47, 102, 255, 0.1);
 }
 
 @media (prefers-reduced-motion: reduce) {

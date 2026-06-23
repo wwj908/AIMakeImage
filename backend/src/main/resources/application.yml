@@ -33,7 +33,7 @@ app:
   openai:
     enabled: true
     base-url: https://api.ruikon.com
-    api-key: ${OPENAI_API_KEY:}
+    api-key: sk-a4bc4a625deaaa04c7af1a29bc193b0ddb8d4e148b105181cba699fb10db66ec
     model: gpt-image-2
     review-model: gpt-image-2
     reasoning-effort: xhigh

@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { api, clearAuth, setAuth, state } from './api'
 
@@ -14,6 +14,9 @@ const selectedPrompt = ref('')
 const uploadFile = ref(null)
 const pastedImageUrl = ref('')
 const previewWork = ref(null)
+const previewComments = ref([])
+const commentText = ref('')
+const commentsLoading = ref(false)
 const conversation = ref([])
 const conversationSessions = ref(loadSessions())
 const currentSessionId = ref(conversationSessions.value[0]?.id || null)
@@ -269,7 +272,7 @@ function createPendingMessage(promptSnapshot) {
     role: 'assistant',
     status: 'loading',
     createdAt: nowIso(),
-    title: form.title || `${form.style} · ${form.ratio}`,
+    title: form.title || `${form.style} 路 ${form.ratio}`,
     prompt: promptSnapshot,
     style: form.style,
     ratio: form.ratio,
@@ -296,9 +299,31 @@ function addConversationPair(promptSnapshot) {
 
 function syncCreatedWork(createdWork) {
   if (!createdWork) return
-  myWorks.value = [createdWork, ...myWorks.value.filter((work) => work.id !== createdWork.id)]
-  if (createdWork.publicWork) {
-    publicWorks.value = [createdWork, ...publicWorks.value.filter((work) => work.id !== createdWork.id)]
+  syncArtworkState(createdWork)
+}
+
+function syncArtworkState(updatedWork) {
+  if (!updatedWork) return
+  const isMine = state.user?.id === updatedWork.ownerId
+  if (isMine) {
+    myWorks.value = myWorks.value.some((work) => work.id === updatedWork.id)
+      ? myWorks.value.map((work) => work.id === updatedWork.id ? { ...work, ...updatedWork } : work)
+      : [updatedWork, ...myWorks.value]
+  } else {
+    myWorks.value = myWorks.value.map((work) => work.id === updatedWork.id ? { ...work, ...updatedWork } : work)
+  }
+  publicWorks.value = updatedWork.publicWork
+    ? [updatedWork, ...publicWorks.value.filter((work) => work.id !== updatedWork.id)]
+    : publicWorks.value.filter((work) => work.id !== updatedWork.id)
+  conversation.value = conversation.value.map((item) => {
+    if (!item.work || item.work.id !== updatedWork.id) return item
+    return {
+      ...item,
+      work: { ...item.work, ...updatedWork }
+    }
+  })
+  if (previewWork.value?.id === updatedWork.id) {
+    previewWork.value = { ...previewWork.value, ...updatedWork }
   }
 }
 
@@ -366,7 +391,7 @@ async function createArtwork() {
 
   try {
     const payload = {
-      title: form.title || `${form.style} · ${form.ratio}`,
+      title: form.title || `${form.style} 路 ${form.ratio}`,
       prompt: `${promptText}，${form.style}，画幅 ${form.ratio}`,
       publicWork: form.publicWork
     }
@@ -410,18 +435,75 @@ async function togglePublish(work) {
     const targetPublic = !work.publicWork
     const updated = await api.publish(work.id, targetPublic)
     Object.assign(work, updated)
-    myWorks.value = myWorks.value.map((item) => item.id === updated.id ? { ...item, ...updated } : item)
-    publicWorks.value = targetPublic
-      ? [updated, ...publicWorks.value.filter((item) => item.id !== updated.id)]
-      : publicWorks.value.filter((item) => item.id !== updated.id)
-    conversation.value = conversation.value.map((item) => {
-      if (!item.work || item.work.id !== work.id) return item
-      return {
-        ...item,
-        work: { ...item.work, ...updated }
-      }
-    })
+    syncArtworkState(updated)
     toast(targetPublic ? '已公开发布' : '已取消公开')
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+function requireLogin() {
+  if (loggedIn.value) return true
+  showAuthModal.value = true
+  toast('请先登录')
+  return false
+}
+
+async function toggleLike(work) {
+  if (!requireLogin()) return
+  try {
+    const updated = await api.like(work.id)
+    Object.assign(work, updated)
+    syncArtworkState(updated)
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+async function toggleFavorite(work) {
+  if (!requireLogin()) return
+  try {
+    const updated = await api.favorite(work.id)
+    Object.assign(work, updated)
+    syncArtworkState(updated)
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+async function openPreview(work) {
+  previewWork.value = work
+  commentText.value = ''
+  await loadComments(work.id)
+}
+
+async function loadComments(workId) {
+  commentsLoading.value = true
+  try {
+    previewComments.value = await api.comments(workId)
+  } catch (error) {
+    toast(error.message)
+  } finally {
+    commentsLoading.value = false
+  }
+}
+
+async function submitComment() {
+  if (!previewWork.value || !requireLogin()) return
+  const content = commentText.value.trim()
+  if (!content) {
+    toast('请输入评论内容')
+    return
+  }
+  try {
+    const created = await api.addComment(previewWork.value.id, content)
+    previewComments.value = [...previewComments.value, created]
+    commentText.value = ''
+    const updated = {
+      ...previewWork.value,
+      commentCount: (previewWork.value.commentCount || 0) + 1
+    }
+    syncArtworkState(updated)
   } catch (error) {
     toast(error.message)
   }
@@ -532,13 +614,13 @@ if (!conversationSessions.value.length) {
         >
           <button class="session-link" @click="openSession(session.id)">
             <span class="session-title">{{ session.title }}</span>
-            <span v-if="session.pinned" class="session-pin">置顶</span>
+            <span v-if="session.pinned" class="session-pin">缃《</span>
           </button>
           <button class="session-more" type="button" @click.stop="toggleSessionMenu(session.id)">•••</button>
           <div v-if="sessionMenuId === session.id" class="session-menu">
             <button type="button" @click="pinSession(session.id)">{{ session.pinned ? '取消置顶' : '置顶' }}</button>
             <button type="button" @click="renameSession(session.id)">重命名</button>
-            <button type="button" class="danger" @click="deleteSession(session.id)">删除</button>
+            <button type="button" class="danger" @click="deleteSession(session.id)">鍒犻櫎</button>
           </div>
         </div>
         <span v-if="!conversationSessions.length">暂无会话记录</span>
@@ -565,7 +647,7 @@ if (!conversationSessions.value.length) {
               v-for="work in carouselWorks"
               :key="work.id"
               class="hero-work-card"
-              @click="previewWork = work"
+              @click="openPreview(work)"
             >
               <img :src="work.imageUrl" :alt="work.title" />
               <div class="hero-work-mask">
@@ -575,7 +657,7 @@ if (!conversationSessions.value.length) {
             </article>
             <div v-if="!carouselWorks.length" class="empty-card">
               <strong>还没有公开作品</strong>
-              <span>登录后发送第一条创作请求，这里就会开始展示公开作品轮播。</span>
+              <span>登录后发送第一条创作请求，这里就会开始展示公开作品。</span>
             </div>
           </div>
 
@@ -588,7 +670,7 @@ if (!conversationSessions.value.length) {
             <div class="message-body">
               <div class="message-meta">
                 <strong>{{ item.role === 'assistant' ? 'MakeImage AI' : accountName }}</strong>
-                <span v-if="item.style">{{ item.style }} · {{ item.ratio }}</span>
+                <span v-if="item.style">{{ item.style }} 路 {{ item.ratio }}</span>
                 <span v-if="item.role === 'user' && item.createdAt">{{ formatMessageTime(item.createdAt) }}</span>
                 <span v-if="item.role === 'assistant' && (item.answeredAt || item.createdAt)">
                   {{ formatMessageTime(item.answeredAt || item.createdAt) }}
@@ -629,7 +711,10 @@ if (!conversationSessions.value.length) {
                   <div class="result-card">
                     <img :src="item.work.imageUrl" :alt="item.work.title" />
                     <div class="result-actions">
-                      <button class="icon-pill" @click="previewWork = item.work" title="查看图片">👁</button>
+                      <button class="icon-pill" @click="openPreview(item.work)" title="查看图片">👁</button>
+                      <button :class="{ active: item.work.liked }" @click="toggleLike(item.work)">赞 {{ item.work.likeCount || 0 }}</button>
+                      <button :class="{ active: item.work.favorited }" @click="toggleFavorite(item.work)">收藏 {{ item.work.favoriteCount || 0 }}</button>
+                      <button @click="openPreview(item.work)">评论 {{ item.work.commentCount || 0 }}</button>
                       <button @click="copyPrompt(item.work)">复制提示词</button>
                       <button @click="download(item.work)">下载</button>
                       <button type="button" @click.stop="togglePublish(item.work)">
@@ -639,7 +724,7 @@ if (!conversationSessions.value.length) {
                   </div>
                   <div class="result-info">
                     <strong>{{ item.work.title }}</strong>
-                    <span>@{{ item.work.ownerName }} · {{ item.work.downloadCount }} 下载</span>
+                    <span>@{{ item.work.ownerName }} · {{ item.work.downloadCount }} 下载 · {{ item.work.likeCount || 0 }} 赞 · {{ item.work.favoriteCount || 0 }} 收藏 · {{ item.work.commentCount || 0 }} 评论</span>
                   </div>
                 </div>
               </div>
@@ -715,7 +800,10 @@ if (!conversationSessions.value.length) {
           <article v-for="work in displayWorks" :key="work.id" class="work-card">
             <img :src="work.imageUrl" :alt="work.title" />
             <div class="work-mask">
-              <button class="icon-pill" @click="previewWork = work" title="查看图片">👁</button>
+              <button class="icon-pill" @click="openPreview(work)" title="查看图片">👁</button>
+              <button :class="{ active: work.liked }" @click="toggleLike(work)">赞 {{ work.likeCount || 0 }}</button>
+              <button :class="{ active: work.favorited }" @click="toggleFavorite(work)">收藏 {{ work.favoriteCount || 0 }}</button>
+              <button @click="openPreview(work)">评论 {{ work.commentCount || 0 }}</button>
               <button @click="copyPrompt(work)">复制提示词</button>
               <button @click="download(work)">下载</button>
               <button v-if="activeTab === 'mine'" type="button" @click.stop="togglePublish(work)">
@@ -724,7 +812,7 @@ if (!conversationSessions.value.length) {
             </div>
             <div class="work-info">
               <strong>{{ work.title }}</strong>
-              <span>@{{ work.ownerName }} · {{ work.downloadCount }} 下载</span>
+              <span>@{{ work.ownerName }} · {{ work.downloadCount }} 下载 · {{ work.likeCount || 0 }} 赞 · {{ work.favoriteCount || 0 }} 收藏 · {{ work.commentCount || 0 }} 评论</span>
             </div>
           </article>
           <p v-if="!displayWorks.length" class="empty">{{ activeTab === 'mine' ? '你还没有作品。' : '还没有公开作品。' }}</p>
@@ -764,11 +852,38 @@ if (!conversationSessions.value.length) {
           <button type="button" class="modal-close" @click="previewWork = null">×</button>
           <img :src="previewWork.imageUrl" :alt="previewWork.title" />
           <div class="preview-meta">
-            <strong>{{ previewWork.title }}</strong>
-            <span>@{{ previewWork.ownerName }} · {{ previewWork.downloadCount }} 下载</span>
+            <div>
+              <strong>{{ previewWork.title }}</strong>
+              <span>@{{ previewWork.ownerName }} · {{ previewWork.downloadCount }} 下载 · {{ previewWork.likeCount || 0 }} 赞 · {{ previewWork.favoriteCount || 0 }} 收藏 · {{ previewWork.commentCount || 0 }} 评论</span>
+            </div>
+            <div class="preview-actions">
+              <button :class="{ active: previewWork.liked }" @click="toggleLike(previewWork)">赞</button>
+              <button :class="{ active: previewWork.favorited }" @click="toggleFavorite(previewWork)">收藏</button>
+              <button @click="download(previewWork)">下载</button>
+            </div>
+          </div>
+          <div class="comment-panel">
+            <div class="comment-head">
+              <strong>评论</strong>
+              <span>{{ previewComments.length }} 条</span>
+            </div>
+            <div class="comment-list">
+              <p v-if="commentsLoading" class="comment-empty">评论加载中...</p>
+              <article v-for="comment in previewComments" :key="comment.id" class="comment-item">
+                <strong>{{ comment.username }}</strong>
+                <span>{{ formatMessageTime(comment.createdAt) }}</span>
+                <p>{{ comment.content }}</p>
+              </article>
+              <p v-if="!commentsLoading && !previewComments.length" class="comment-empty">暂无评论</p>
+            </div>
+            <form class="comment-form" @submit.prevent="submitComment">
+              <input v-model="commentText" placeholder="写下你的评论" />
+              <button type="submit">发送</button>
+            </form>
           </div>
         </div>
       </div>
     </transition>
   </main>
 </template>
+

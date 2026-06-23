@@ -51,12 +51,35 @@ public class ArtworkController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "12") int size
     ) {
-        return ApiResponse.ok(artworkService.publicWorks(pageRequest(page, size)));
+        return ApiResponse.ok(artworkService.publicWorks(SecurityUtils.currentUserOrNull(), pageRequest(page, size)));
     }
 
     @PostMapping("/public/artworks/{id}/download")
     public ApiResponse<ArtworkDtos.ArtworkView> download(@PathVariable Long id) {
         return ApiResponse.ok(artworkService.addDownload(id));
+    }
+
+    @PostMapping("/artworks/{id}/like")
+    public ApiResponse<ArtworkDtos.ArtworkView> like(@PathVariable Long id) {
+        return ApiResponse.ok(artworkService.toggleLike(SecurityUtils.currentUser(), id));
+    }
+
+    @PostMapping("/artworks/{id}/favorite")
+    public ApiResponse<ArtworkDtos.ArtworkView> favorite(@PathVariable Long id) {
+        return ApiResponse.ok(artworkService.toggleFavorite(SecurityUtils.currentUser(), id));
+    }
+
+    @GetMapping("/public/artworks/{id}/comments")
+    public ApiResponse<java.util.List<ArtworkDtos.CommentView>> comments(@PathVariable Long id) {
+        return ApiResponse.ok(artworkService.comments(id));
+    }
+
+    @PostMapping("/artworks/{id}/comments")
+    public ApiResponse<ArtworkDtos.CommentView> comment(
+            @PathVariable Long id,
+            @Valid @RequestBody ArtworkDtos.CommentRequest request
+    ) {
+        return ApiResponse.ok(artworkService.addComment(SecurityUtils.currentUser(), id, request));
     }
 
     private PageRequest pageRequest(int page, int size) {

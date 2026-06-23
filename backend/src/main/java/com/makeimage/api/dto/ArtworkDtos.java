@@ -25,6 +25,18 @@ public class ArtworkDtos {
     public record PublishRequest(Boolean publicWork) {
     }
 
+    public record CommentRequest(@NotBlank @Size(max = 500) String content) {
+    }
+
+    public record CommentView(
+            Long id,
+            Long userId,
+            String username,
+            String content,
+            LocalDateTime createdAt
+    ) {
+    }
+
     public record ArtworkView(
             Long id,
             Long ownerId,
@@ -37,6 +49,11 @@ public class ArtworkDtos {
             String sourceImageUrl,
             Boolean publicWork,
             Long downloadCount,
+            Long likeCount,
+            Long favoriteCount,
+            Long commentCount,
+            Boolean liked,
+            Boolean favorited,
             LocalDateTime createdAt
     ) {
     }

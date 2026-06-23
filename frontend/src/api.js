@@ -82,5 +82,12 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ publicWork })
   }),
-  addDownload: (id) => request(`/api/public/artworks/${id}/download`, { method: 'POST' })
+  addDownload: (id) => request(`/api/public/artworks/${id}/download`, { method: 'POST' }),
+  like: (id) => request(`/api/artworks/${id}/like`, { method: 'POST' }),
+  favorite: (id) => request(`/api/artworks/${id}/favorite`, { method: 'POST' }),
+  comments: (id) => request(`/api/public/artworks/${id}/comments`),
+  addComment: (id, content) => request(`/api/artworks/${id}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ content })
+  })
 }
