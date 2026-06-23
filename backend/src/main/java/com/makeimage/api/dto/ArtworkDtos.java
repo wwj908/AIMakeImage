@@ -1,0 +1,43 @@
+package com.makeimage.api.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+import java.time.LocalDateTime;
+
+public class ArtworkDtos {
+    public record GenerateRequest(
+            @NotBlank @Size(max = 1200) String prompt,
+            @Size(max = 1200) String negativePrompt,
+            @Size(max = 120) String title,
+            Boolean publicWork
+    ) {
+    }
+
+    public record EditRequest(
+            @NotBlank @Size(max = 1200) String prompt,
+            @Size(max = 1200) String negativePrompt,
+            @Size(max = 120) String title,
+            Boolean publicWork
+    ) {
+    }
+
+    public record PublishRequest(Boolean publicWork) {
+    }
+
+    public record ArtworkView(
+            Long id,
+            Long ownerId,
+            String ownerName,
+            String title,
+            String prompt,
+            String negativePrompt,
+            String mode,
+            String imageUrl,
+            String sourceImageUrl,
+            Boolean publicWork,
+            Long downloadCount,
+            LocalDateTime createdAt
+    ) {
+    }
+}

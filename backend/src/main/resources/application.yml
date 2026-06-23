@@ -1,0 +1,40 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: make-image-api
+  datasource:
+    url: jdbc:mysql://localhost:3306/make_image?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2s
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+app:
+  jwt-secret: "change-this-secret-to-at-least-32-characters"
+  jwt-expiration-hours: 168
+  storage-dir: storage
+  public-base-url: http://localhost:8080
+  openai:
+    enabled: true
+    base-url: https://api.ruikon.com
+    api-key: ${OPENAI_API_KEY:}
+    model: gpt-image-2
+    review-model: gpt-image-2
+    reasoning-effort: xhigh
+    disable-response-storage: true
