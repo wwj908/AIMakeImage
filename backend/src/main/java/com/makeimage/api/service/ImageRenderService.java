@@ -12,6 +12,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,7 +23,8 @@ import java.util.Map;
 
 @Service
 public class ImageRenderService {
-    private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(3);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(8);
+    private static final int MAX_ATTEMPTS = 2;
 
     private final AppProperties properties;
     private final ObjectMapper objectMapper;
@@ -32,7 +34,7 @@ public class ImageRenderService {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(20))
+                .connectTimeout(Duration.ofSeconds(30))
                 .build();
     }
 
@@ -42,18 +44,61 @@ public class ImageRenderService {
         }
         try {
             if ("edit".equals(mode) && sourceImage != null && !sourceImage.isEmpty()) {
-                renderWithImageEdit(prompt, negativePrompt, output, sourceImage);
+                retryRender(() -> renderWithImageEdit(prompt, negativePrompt, output, sourceImage));
             } else {
-                renderWithImageGeneration(prompt, negativePrompt, output);
+                retryRender(() -> renderWithImageGeneration(prompt, negativePrompt, output));
             }
         } catch (IllegalStateException exception) {
             throw exception;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("OpenAI 图片生成请求被中断");
+        } catch (HttpTimeoutException exception) {
+            throw new IllegalStateException("OpenAI 图片生成超时，请稍后重试或降低图片尺寸");
         } catch (Exception exception) {
+            if (isConnectionClosed(exception)) {
+                throw new IllegalStateException("OpenAI 图片生成连接中断，请稍后重试");
+            }
             throw new IllegalStateException("OpenAI 图片生成失败: " + exception.getMessage(), exception);
         }
+    }
+
+    private void retryRender(RenderCall call) throws Exception {
+        Exception lastException = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                call.run();
+                return;
+            } catch (Exception exception) {
+                lastException = exception;
+                if (attempt >= MAX_ATTEMPTS || !isRetryable(exception)) {
+                    throw exception;
+                }
+                Thread.sleep(900L * attempt);
+            }
+        }
+        if (lastException != null) {
+            throw lastException;
+        }
+    }
+
+    private boolean isRetryable(Exception exception) {
+        return exception instanceof HttpTimeoutException || isConnectionClosed(exception);
+    }
+
+    private boolean isConnectionClosed(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor != null) {
+            String message = cursor.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains("eof") || lower.contains("connection reset") || lower.contains("closed")) {
+                    return true;
+                }
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
     }
 
     private boolean useOpenAiImageGeneration() {
@@ -146,13 +191,25 @@ public class ImageRenderService {
     }
 
     private String detectSizeFromPrompt(String prompt) {
-        if (prompt.contains("16:9") || prompt.contains("4:3")) {
-            return "1536x1024";
-        }
-        if (prompt.contains("3:4")) {
+        if (containsAny(prompt, "9:16", "1:2", "1:3", "2:3", "3:4", "4:5")) {
             return "1024x1536";
         }
+        if (containsAny(prompt, "16:9", "21:9", "2:1", "3:1", "3:2", "4:3", "5:4")) {
+            return "1536x1024";
+        }
         return "1024x1024";
+    }
+
+    private boolean containsAny(String value, String... candidates) {
+        if (value == null) {
+            return false;
+        }
+        for (String candidate : candidates) {
+            if (value.contains(candidate)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String buildPrompt(String prompt, String negativePrompt, String mode) {
@@ -204,5 +261,10 @@ public class ImageRenderService {
 
     private String normalizeBaseUrl(String baseUrl) {
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    @FunctionalInterface
+    private interface RenderCall {
+        void run() throws Exception;
     }
 }

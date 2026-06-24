@@ -68,6 +68,10 @@ async function request(path, options = {}) {
 
 export const api = {
   register: (data) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+  sendEmailCode: (email) => request('/api/auth/email-code', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  }),
   login: (data) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
   generate: (data) => request('/api/artworks/generate', { method: 'POST', body: JSON.stringify(data) }),
   edit: (data, image) => {
@@ -75,6 +79,12 @@ export const api = {
     form.append('image', image)
     form.append('data', new Blob([JSON.stringify(data)], { type: 'application/json' }))
     return request('/api/artworks/edit', { method: 'POST', body: form })
+  },
+  uploadArtwork: (data, image) => {
+    const form = new FormData()
+    form.append('image', image)
+    form.append('data', new Blob([JSON.stringify(data)], { type: 'application/json' }))
+    return request('/api/artworks/upload', { method: 'POST', body: form })
   },
   myWorks: () => request('/api/artworks/me?size=24'),
   publicWorks: () => request('/api/public/artworks?size=24'),

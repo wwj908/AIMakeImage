@@ -22,6 +22,15 @@ public class ArtworkDtos {
     ) {
     }
 
+    public record UploadRequest(
+            @NotBlank @Size(max = 120) String title,
+            @NotBlank @Size(max = 1200) String prompt,
+            @Size(max = 300) String tags,
+            @Size(max = 24) String ratio,
+            Boolean publicWork
+    ) {
+    }
+
     public record PublishRequest(Boolean publicWork) {
     }
 

@@ -20,6 +20,18 @@ spring:
       host: localhost
       port: 6379
       timeout: 2s
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: 3258613374@qq.com
+    password: rxrqotxnlfktcieb
+    protocol: smtps
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
   servlet:
     multipart:
       max-file-size: 20MB

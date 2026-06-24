@@ -33,6 +33,14 @@ public class ArtworkController {
         return ApiResponse.ok("修改成功", artworkService.edit(SecurityUtils.currentUser(), image, request));
     }
 
+    @PostMapping("/artworks/upload")
+    public ApiResponse<ArtworkDtos.ArtworkView> upload(
+            @RequestPart("image") MultipartFile image,
+            @Valid @RequestPart("data") ArtworkDtos.UploadRequest request
+    ) throws Exception {
+        return ApiResponse.ok("发布成功", artworkService.upload(SecurityUtils.currentUser(), image, request));
+    }
+
     @GetMapping("/artworks/me")
     public ApiResponse<Page<ArtworkDtos.ArtworkView>> myWorks(
             @RequestParam(defaultValue = "0") int page,

@@ -7,7 +7,10 @@ const SESSION_STORAGE_KEY = 'mi_sessions'
 const authMode = ref('login')
 const activeTab = ref('create')
 const showAuthModal = ref(false)
+const showRatioModal = ref(false)
 const loading = ref(false)
+const sendingCode = ref(false)
+const emailCodeCountdown = ref(0)
 const message = ref('')
 const authError = ref('')
 const selectedPrompt = ref('')
@@ -19,6 +22,16 @@ const commentText = ref('')
 const commentsLoading = ref(false)
 const editingWork = ref(null)
 const metadataForm = reactive({ title: '', tags: '' })
+const showUploadModal = ref(false)
+const uploadArtworkFile = ref(null)
+const uploadArtworkPreview = ref('')
+const uploadArtworkForm = reactive({
+  title: '',
+  prompt: '',
+  tags: '',
+  ratio: '1:1',
+  publicWork: true
+})
 const conversation = ref([])
 const conversationSessions = ref(loadSessions())
 const currentSessionId = ref(conversationSessions.value[0]?.id || null)
@@ -27,8 +40,9 @@ const sessionMenuId = ref(null)
 let publicCarouselTimer = null
 let syncingSessions = false
 let sessionSaveTimer = null
+let emailCodeTimer = null
 
-const auth = reactive({ username: '', email: '', account: '', password: '' })
+const auth = reactive({ username: '', email: '', account: '', password: '', emailCode: '' })
 const form = reactive({
   mode: 'generate',
   title: '',
@@ -37,6 +51,14 @@ const form = reactive({
   ratio: '1:1',
   style: '电影写真'
 })
+const galleryFilters = reactive({
+  keyword: '',
+  author: '全部',
+  style: '全部',
+  ratio: '全部',
+  mode: '全部',
+  sort: '最新'
+})
 
 const myWorks = ref([])
 const publicWorks = ref([])
@@ -44,8 +66,57 @@ const publicWorks = ref([])
 const loggedIn = computed(() => Boolean(state.token && state.user))
 const accountName = computed(() => (loggedIn.value ? state.user.username : '未登录'))
 const displayWorks = computed(() => {
-  const source = activeTab.value === 'mine' ? myWorks.value : publicWorks.value
+  const source = activeTab.value === 'mine' ? myWorks.value : filteredPublicWorks.value
   return source.slice(0, 8)
+})
+const filterStyles = computed(() => {
+  const values = publicWorks.value.flatMap((work) => {
+    const fromTitle = (work.title || '').split(/[·\s]/)[0]
+    const fromTags = (work.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean)
+    return [fromTitle, ...fromTags].filter(Boolean)
+  })
+  return ['全部', ...Array.from(new Set([...styleTabs.filter((item) => item !== '精选'), ...values]))]
+})
+const filterAuthors = computed(() => {
+  return ['全部', ...Array.from(new Set(publicWorks.value.map((work) => work.ownerName).filter(Boolean)))]
+})
+const filteredPublicWorks = computed(() => {
+  const keyword = galleryFilters.keyword.trim().toLowerCase()
+  const matchesText = (work) => {
+    if (!keyword) return true
+    return [work.title, work.prompt, work.ownerName, work.tags]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(keyword))
+  }
+  const matchesStyle = (work) => {
+    if (galleryFilters.style === '全部') return true
+    return [work.title, work.prompt, work.tags]
+      .filter(Boolean)
+      .some((value) => String(value).includes(galleryFilters.style))
+  }
+  const matchesAuthor = (work) => {
+    return galleryFilters.author === '全部' || work.ownerName === galleryFilters.author
+  }
+  const matchesRatio = (work) => {
+    if (galleryFilters.ratio === '全部') return true
+    return [work.title, work.prompt]
+      .filter(Boolean)
+      .some((value) => String(value).includes(galleryFilters.ratio))
+  }
+  const matchesMode = (work) => {
+    if (galleryFilters.mode === '全部') return true
+    return galleryFilters.mode === '文生图' ? work.mode === 'generate' : work.mode === 'edit'
+  }
+  const sorted = publicWorks.value
+    .filter((work) => matchesText(work) && matchesAuthor(work) && matchesStyle(work) && matchesRatio(work) && matchesMode(work))
+    .sort((a, b) => {
+      if (galleryFilters.sort === '下载最多') return (b.downloadCount || 0) - (a.downloadCount || 0)
+      if (galleryFilters.sort === '点赞最多') return (b.likeCount || 0) - (a.likeCount || 0)
+      if (galleryFilters.sort === '收藏最多') return (b.favoriteCount || 0) - (a.favoriteCount || 0)
+      if (galleryFilters.sort === '评论最多') return (b.commentCount || 0) - (a.commentCount || 0)
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+    })
+  return sorted
 })
 const carouselWorks = computed(() => {
   if (!publicWorks.value.length) return []
@@ -65,7 +136,22 @@ const visibleSessions = computed(() => {
 })
 
 const styleTabs = ['精选', '人像摄影', '艺术', '国风插画', '动漫', '3D 渲染', '商品', '风景']
-const ratios = ['1:1', '3:4', '4:3', '16:9']
+const ratios = [
+  '1:1',
+  '3:2',
+  '2:3',
+  '4:3',
+  '3:4',
+  '16:9',
+  '9:16',
+  '21:9',
+  '2:1',
+  '1:2',
+  '5:4',
+  '4:5',
+  '3:1',
+  '1:3'
+]
 
 function nowIso() {
   return new Date().toISOString()
@@ -362,9 +448,43 @@ function validateAuthForm() {
   if (auth.username.trim().length < 2) return '用户名至少需要 2 个字符'
   if (!auth.email.trim()) return '请输入邮箱'
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(auth.email.trim())) return '请输入正确的邮箱地址'
+  if (!auth.emailCode.trim()) return '请输入邮箱验证码'
   if (!auth.password) return '请输入密码'
   if (auth.password.length < 6) return '密码至少需要 6 位'
   return ''
+}
+
+async function sendRegisterCode() {
+  if (authMode.value !== 'register') return
+  const email = auth.email.trim()
+  if (!email) {
+    authError.value = '请输入邮箱'
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    authError.value = '请输入正确的邮箱地址'
+    return
+  }
+  sendingCode.value = true
+  authError.value = ''
+  try {
+    await api.sendEmailCode(email)
+    emailCodeCountdown.value = 60
+    toast('验证码已发送到邮箱')
+    if (emailCodeTimer) window.clearInterval(emailCodeTimer)
+    emailCodeTimer = window.setInterval(() => {
+      emailCodeCountdown.value -= 1
+      if (emailCodeCountdown.value <= 0) {
+        window.clearInterval(emailCodeTimer)
+        emailCodeTimer = null
+        emailCodeCountdown.value = 0
+      }
+    }, 1000)
+  } catch (error) {
+    authError.value = error.message
+  } finally {
+    sendingCode.value = false
+  }
 }
 
 function setReferenceImage(file, source = '已选择参考图') {
@@ -387,6 +507,42 @@ function clearReferenceImage() {
   form.mode = 'generate'
 }
 
+function setUploadArtworkImage(file) {
+  if (!file || !file.type?.startsWith('image/')) {
+    toast('请选择图片文件')
+    return
+  }
+  if (uploadArtworkPreview.value) {
+    URL.revokeObjectURL(uploadArtworkPreview.value)
+  }
+  uploadArtworkFile.value = file
+  uploadArtworkPreview.value = URL.createObjectURL(file)
+}
+
+function resetUploadArtworkForm() {
+  if (uploadArtworkPreview.value) {
+    URL.revokeObjectURL(uploadArtworkPreview.value)
+  }
+  uploadArtworkFile.value = null
+  uploadArtworkPreview.value = ''
+  uploadArtworkForm.title = ''
+  uploadArtworkForm.prompt = ''
+  uploadArtworkForm.tags = ''
+  uploadArtworkForm.ratio = '1:1'
+  uploadArtworkForm.publicWork = true
+}
+
+function openUploadArtworkModal() {
+  if (!requireLogin()) return
+  resetUploadArtworkForm()
+  showUploadModal.value = true
+}
+
+function closeUploadArtworkModal() {
+  showUploadModal.value = false
+  resetUploadArtworkForm()
+}
+
 function handlePasteImage(event) {
   const items = Array.from(event.clipboardData?.items || [])
   const imageItem = items.find((item) => item.type.startsWith('image/'))
@@ -395,6 +551,12 @@ function handlePasteImage(event) {
   if (!file) return
   event.preventDefault()
   setReferenceImage(file, '已粘贴图片，自动切换到改图模式')
+}
+
+function handlePromptKeydown(event) {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+  event.preventDefault()
+  createArtwork()
 }
 
 function createPendingMessage(promptSnapshot) {
@@ -492,7 +654,7 @@ async function submitAuth() {
   try {
     const res = authMode.value === 'login'
       ? await api.login({ account: auth.account, password: auth.password })
-      : await api.register({ username: auth.username, email: auth.email, password: auth.password })
+      : await api.register({ username: auth.username, email: auth.email, password: auth.password, emailCode: auth.emailCode })
     setAuth(res)
     toast(authMode.value === 'login' ? '欢迎回来' : '注册成功')
     showAuthModal.value = false
@@ -519,6 +681,7 @@ async function createArtwork() {
   if (loading.value) return
 
   const pendingMessageId = addConversationPair(promptText)
+  form.prompt = ''
   loading.value = true
 
   try {
@@ -600,6 +763,41 @@ async function saveMetadata() {
   }
 }
 
+async function submitUploadArtwork() {
+  if (!uploadArtworkFile.value) {
+    toast('请先上传作品图片')
+    return
+  }
+  const title = uploadArtworkForm.title.trim()
+  const prompt = uploadArtworkForm.prompt.trim()
+  if (!title) {
+    toast('请输入作品标题')
+    return
+  }
+  if (!prompt) {
+    toast('请输入作品提示词或描述')
+    return
+  }
+  loading.value = true
+  try {
+    const created = await api.uploadArtwork({
+      title: `${title} · ${uploadArtworkForm.ratio}`,
+      prompt,
+      tags: uploadArtworkForm.tags.trim(),
+      ratio: uploadArtworkForm.ratio,
+      publicWork: uploadArtworkForm.publicWork
+    }, uploadArtworkFile.value)
+    syncArtworkState(created)
+    showUploadModal.value = false
+    resetUploadArtworkForm()
+    toast('作品已发布')
+  } catch (error) {
+    toast(error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
 function requireLogin() {
   if (loggedIn.value) return true
   showAuthModal.value = true
@@ -633,6 +831,15 @@ async function openPreview(work) {
   previewWork.value = work
   commentText.value = ''
   await loadComments(work.id)
+}
+
+function showAuthorWorks(work) {
+  if (!work?.ownerName) return
+  galleryFilters.author = work.ownerName
+  galleryFilters.keyword = ''
+  activeTab.value = 'gallery'
+  previewWork.value = null
+  toast(`正在查看 ${work.ownerName} 的公开作品`)
 }
 
 async function loadComments(workId) {
@@ -737,6 +944,9 @@ onUnmounted(() => {
   }
   if (sessionSaveTimer) {
     window.clearTimeout(sessionSaveTimer)
+  }
+  if (emailCodeTimer) {
+    window.clearInterval(emailCodeTimer)
   }
   sessionMenuId.value = null
 })
@@ -916,6 +1126,7 @@ if (!conversationSessions.value.length) {
             rows="2"
             placeholder="描述你想生成的画面，支持直接粘贴图片"
             @paste="handlePasteImage"
+            @keydown="handlePromptKeydown"
           ></textarea>
           <div class="composer-bottom">
             <div class="quick-tools">
@@ -923,14 +1134,9 @@ if (!conversationSessions.value.length) {
                 <input type="file" accept="image/*" @change="setReferenceImage($event.target.files[0])" />
                 <span>参考图</span>
               </label>
-              <button
-                v-for="item in ratios"
-                :key="item"
-                type="button"
-                :class="{ active: form.ratio === item }"
-                @click="form.ratio = item"
-              >
-                {{ item }}
+              <button type="button" class="ratio-trigger" @click="showRatioModal = true">
+                <span>比例大小</span>
+                <strong>{{ form.ratio }}</strong>
               </button>
               <button
                 v-for="item in styleTabs"
@@ -962,7 +1168,59 @@ if (!conversationSessions.value.length) {
             <h1>{{ activeTab === 'mine' ? '我的作品' : '公开作品' }}</h1>
             <p>{{ activeTab === 'mine' ? '管理发布状态、下载生成图片' : '查看其他创作者公开的提示词' }}</p>
           </div>
-          <button @click="refresh">刷新</button>
+          <div class="gallery-heading-actions">
+            <button v-if="activeTab === 'mine'" class="primary" @click="openUploadArtworkModal">发布作品</button>
+            <button @click="refresh">刷新</button>
+          </div>
+        </div>
+        <div v-if="activeTab === 'gallery'" class="gallery-filters">
+          <label class="gallery-search">
+            <span>搜索</span>
+            <input v-model="galleryFilters.keyword" placeholder="标题、提示词、作者、标签" />
+          </label>
+          <label>
+            <span>作者</span>
+            <select v-model="galleryFilters.author">
+              <option v-for="item in filterAuthors" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label>
+            <span>分类</span>
+            <select v-model="galleryFilters.style">
+              <option v-for="item in filterStyles" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label>
+            <span>画幅</span>
+            <select v-model="galleryFilters.ratio">
+              <option value="全部">全部</option>
+              <option v-for="item in ratios" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label>
+            <span>模式</span>
+            <select v-model="galleryFilters.mode">
+              <option value="全部">全部</option>
+              <option value="文生图">文生图</option>
+              <option value="改图模式">改图模式</option>
+            </select>
+          </label>
+          <label>
+            <span>排序</span>
+            <select v-model="galleryFilters.sort">
+              <option value="最新">最新</option>
+              <option value="下载最多">下载最多</option>
+              <option value="点赞最多">点赞最多</option>
+              <option value="收藏最多">收藏最多</option>
+              <option value="评论最多">评论最多</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            @click="galleryFilters.keyword = ''; galleryFilters.author = '全部'; galleryFilters.style = '全部'; galleryFilters.ratio = '全部'; galleryFilters.mode = '全部'; galleryFilters.sort = '最新'"
+          >
+            清空
+          </button>
         </div>
         <div class="works-grid">
           <article v-for="work in displayWorks" :key="work.id" class="work-card">
@@ -1010,11 +1268,41 @@ if (!conversationSessions.value.length) {
           </div>
           <input v-if="authMode === 'register'" v-model="auth.username" placeholder="用户名" />
           <input v-if="authMode === 'register'" v-model="auth.email" placeholder="邮箱" />
+          <div v-if="authMode === 'register'" class="auth-code-row">
+            <input v-model="auth.emailCode" placeholder="邮箱验证码" />
+            <button type="button" :disabled="sendingCode || emailCodeCountdown > 0" @click="sendRegisterCode">
+              {{ sendingCode ? '发送中...' : (emailCodeCountdown > 0 ? `${emailCodeCountdown}s` : '发送验证码') }}
+            </button>
+          </div>
           <input v-if="authMode === 'login'" v-model="auth.account" placeholder="用户名或邮箱" />
           <input v-model="auth.password" type="password" placeholder="密码" />
           <p v-if="authError" class="form-error">{{ authError }}</p>
           <button class="modal-submit" :disabled="loading">{{ loading ? '处理中...' : '继续' }}</button>
         </form>
+      </div>
+    </transition>
+
+    <transition name="modal">
+      <div v-if="showRatioModal" class="modal-backdrop" @click.self="showRatioModal = false">
+        <div class="ratio-modal">
+          <button type="button" class="modal-close" @click="showRatioModal = false">×</button>
+          <div class="modal-head">
+            <h2>比例大小</h2>
+            <p>当前：{{ form.ratio }}</p>
+          </div>
+          <div class="ratio-grid">
+            <button
+              v-for="item in ratios"
+              :key="item"
+              type="button"
+              :class="{ active: form.ratio === item }"
+              @click="form.ratio = item; showRatioModal = false"
+            >
+              <span class="ratio-icon" :style="{ aspectRatio: item.replace(':', ' / ') }"></span>
+              <strong>{{ item }}</strong>
+            </button>
+          </div>
+        </div>
       </div>
     </transition>
 
@@ -1044,7 +1332,7 @@ if (!conversationSessions.value.length) {
               </div>
               <div>
                 <span>作者</span>
-                <strong>@{{ previewWork.ownerName }}</strong>
+                <button type="button" class="preview-author-link" @click="showAuthorWorks(previewWork)">@{{ previewWork.ownerName }}</button>
               </div>
               <div>
                 <span>下载量</span>
@@ -1056,13 +1344,13 @@ if (!conversationSessions.value.length) {
               </div>
             </div>
 
-            <div class="preview-author-card">
+            <button type="button" class="preview-author-card" @click="showAuthorWorks(previewWork)">
               <div class="preview-author-avatar">{{ previewWork.ownerName?.slice(0, 1) || 'U' }}</div>
               <div>
                 <strong>{{ previewWork.ownerName }}</strong>
                 <span>{{ previewWork.likeCount || 0 }} 赞 · {{ previewWork.favoriteCount || 0 }} 收藏 · {{ previewWork.commentCount || 0 }} 评论</span>
               </div>
-            </div>
+            </button>
 
             <div class="preview-actions">
               <button class="download-main" @click="download(previewWork)">下载</button>
@@ -1097,6 +1385,51 @@ if (!conversationSessions.value.length) {
             </div>
           </aside>
         </div>
+      </div>
+    </transition>
+
+    <transition name="modal">
+      <div v-if="showUploadModal" class="modal-backdrop" @click.self="closeUploadArtworkModal">
+        <form class="upload-artwork-modal" @submit.prevent="submitUploadArtwork">
+          <button type="button" class="modal-close" @click="closeUploadArtworkModal">×</button>
+          <div class="modal-head">
+            <h2>发布作品</h2>
+            <p>上传自己的图片，补充标题、提示词和标签后发布到作品库</p>
+          </div>
+          <label class="upload-drop">
+            <input type="file" accept="image/*" @change="setUploadArtworkImage($event.target.files[0])" />
+            <img v-if="uploadArtworkPreview" :src="uploadArtworkPreview" alt="作品预览" />
+            <span v-else>点击上传图片</span>
+          </label>
+          <label>
+            <span>标题</span>
+            <input v-model="uploadArtworkForm.title" maxlength="120" placeholder="输入作品标题" />
+          </label>
+          <label>
+            <span>提示词 / 描述</span>
+            <textarea v-model="uploadArtworkForm.prompt" maxlength="1200" rows="3" placeholder="描述这张作品，公开后其他人可以查看" />
+          </label>
+          <label>
+            <span>标签</span>
+            <input v-model="uploadArtworkForm.tags" maxlength="300" placeholder="例如：人像, 海边, 电影感" />
+          </label>
+          <div class="upload-options">
+            <button
+              v-for="item in ratios"
+              :key="item"
+              type="button"
+              :class="{ active: uploadArtworkForm.ratio === item }"
+              @click="uploadArtworkForm.ratio = item"
+            >
+              {{ item }}
+            </button>
+            <label class="publish-check">
+              <input v-model="uploadArtworkForm.publicWork" type="checkbox" />
+              公开
+            </label>
+          </div>
+          <button class="modal-submit" :disabled="loading">{{ loading ? '发布中...' : '发布作品' }}</button>
+        </form>
       </div>
     </transition>
 

@@ -94,6 +94,25 @@ public class ArtworkService {
         return toView(artworkRepository.save(artwork), currentUser);
     }
 
+    @Transactional
+    public ArtworkDtos.ArtworkView upload(CurrentUser currentUser, MultipartFile image, ArtworkDtos.UploadRequest request) throws IOException {
+        if (image == null || image.isEmpty()) {
+            throw new IllegalArgumentException("请上传作品图片");
+        }
+        User owner = userRepository.findById(currentUser.id()).orElseThrow();
+        String imageUrl = storageService.saveUpload(image);
+
+        Artwork artwork = new Artwork();
+        artwork.setOwner(owner);
+        artwork.setTitle(request.title().trim());
+        artwork.setTags(normalizeTags(request.tags()));
+        artwork.setPrompt(request.prompt());
+        artwork.setMode("upload");
+        artwork.setImageUrl(imageUrl);
+        artwork.setPublicWork(Boolean.TRUE.equals(request.publicWork()));
+        return toView(artworkRepository.save(artwork), currentUser);
+    }
+
     public Page<ArtworkDtos.ArtworkView> publicWorks(CurrentUser currentUser, Pageable pageable) {
         return artworkRepository.findByPublicWorkTrue(pageable).map(artwork -> toView(artwork, currentUser));
     }

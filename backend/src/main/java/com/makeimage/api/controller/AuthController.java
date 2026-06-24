@@ -19,6 +19,12 @@ public class AuthController {
         this.userRepository = userRepository;
     }
 
+    @PostMapping("/email-code")
+    public ApiResponse<Void> emailCode(@Valid @RequestBody AuthDtos.EmailCodeRequest request) {
+        authService.sendRegisterCode(request);
+        return ApiResponse.ok("验证码已发送", null);
+    }
+
     @PostMapping("/register")
     public ApiResponse<AuthDtos.AuthResponse> register(@Valid @RequestBody AuthDtos.RegisterRequest request) {
         return ApiResponse.ok("注册成功", authService.register(request));
