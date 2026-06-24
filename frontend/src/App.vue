@@ -32,6 +32,10 @@ const uploadArtworkForm = reactive({
   ratio: '1:1',
   publicWork: true
 })
+const adminStats = ref(null)
+const adminUsers = ref([])
+const adminSettings = reactive({})
+const systemConfig = reactive({ name: 'MakeImage AI', logoUrl: '/image.png' })
 const conversation = ref([])
 const conversationSessions = ref(loadSessions())
 const currentSessionId = ref(conversationSessions.value[0]?.id || null)
@@ -64,6 +68,7 @@ const myWorks = ref([])
 const publicWorks = ref([])
 
 const loggedIn = computed(() => Boolean(state.token && state.user))
+const isAdmin = computed(() => state.user?.role === 'ADMIN')
 const accountName = computed(() => (loggedIn.value ? state.user.username : '未登录'))
 const displayWorks = computed(() => {
   const source = activeTab.value === 'mine' ? myWorks.value : filteredPublicWorks.value
@@ -720,6 +725,84 @@ async function refresh() {
     if (loggedIn.value) {
       myWorks.value = (await api.myWorks()).content || []
     }
+    if (isAdmin.value) {
+      await loadAdminData()
+    }
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+async function loadSystemConfig() {
+  try {
+    const settings = await api.publicSystem()
+    applySystemConfig(settings)
+  } catch (_) {
+  }
+}
+
+function applySystemConfig(settings) {
+  systemConfig.name = settings['system.name'] || 'MakeImage AI'
+  systemConfig.logoUrl = settings['system.logoUrl'] || '/image.png'
+  document.title = systemConfig.name
+  let icon = document.querySelector("link[rel='icon']")
+  if (!icon) {
+    icon = document.createElement('link')
+    icon.rel = 'icon'
+    document.head.appendChild(icon)
+  }
+  icon.href = systemConfig.logoUrl
+}
+
+async function loadAdminData() {
+  if (!isAdmin.value) return
+  const [stats, users, settings] = await Promise.all([
+    api.adminStats(),
+    api.adminUsers(),
+    api.adminSettings()
+  ])
+  adminStats.value = stats
+  adminUsers.value = users
+  Object.keys(adminSettings).forEach((key) => delete adminSettings[key])
+  Object.assign(adminSettings, settings)
+}
+
+async function saveAdminSettings() {
+  try {
+    const updated = await api.updateAdminSettings({ ...adminSettings })
+    Object.keys(adminSettings).forEach((key) => delete adminSettings[key])
+    Object.assign(adminSettings, updated)
+    applySystemConfig(updated)
+    toast('系统配置已保存')
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+async function uploadSystemLogo(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!file.type?.startsWith('image/')) {
+    toast('请选择图片文件')
+    return
+  }
+  try {
+    const updated = await api.uploadSystemLogo(file)
+    Object.keys(adminSettings).forEach((key) => delete adminSettings[key])
+    Object.assign(adminSettings, updated)
+    applySystemConfig(updated)
+    toast('系统 Logo 已更新')
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+async function changeUserRole(user, role) {
+  try {
+    const updated = await api.updateUserRole(user.id, role)
+    adminUsers.value = adminUsers.value.map((item) => item.id === updated.id ? updated : item)
+    toast('用户角色已更新')
   } catch (error) {
     toast(error.message)
   }
@@ -909,6 +992,9 @@ async function copyPrompt(work) {
 function logout() {
   clearAuth()
   myWorks.value = []
+  adminStats.value = null
+  adminUsers.value = []
+  Object.keys(adminSettings).forEach((key) => delete adminSettings[key])
   conversationSessions.value = loadSessions()
   currentSessionId.value = conversationSessions.value[0]?.id || null
   conversation.value = cloneData(conversationSessions.value[0]?.messages || [])
@@ -935,6 +1021,7 @@ watch(conversation, () => {
 }, { deep: true })
 
 onMounted(async () => {
+  await loadSystemConfig()
   await loadChatSessions()
   await refresh()
 })
@@ -960,10 +1047,10 @@ if (!conversationSessions.value.length) {
   <main class="doubao-layout">
     <aside class="sidebar">
       <div class="profile">
-        <img class="app-logo" src="/image.png" alt="MakeImage AI logo" />
+        <img class="app-logo" :src="systemConfig.logoUrl" alt="系统 logo" />
         <div>
           <strong>{{ accountName }}</strong>
-          <span>MakeImage AI</span>
+          <span>{{ systemConfig.name }}</span>
         </div>
       </div>
 
@@ -978,6 +1065,9 @@ if (!conversationSessions.value.length) {
         </button>
         <button :class="{ active: activeTab === 'mine' }" :disabled="!loggedIn" @click="activeTab = 'mine'">
           <span>▣</span> 我的作品
+        </button>
+        <button v-if="isAdmin" :class="{ active: activeTab === 'admin' }" @click="activeTab = 'admin'; loadAdminData()">
+          <span>⚙</span> 管理后台
         </button>
       </nav>
 
@@ -1246,6 +1336,85 @@ if (!conversationSessions.value.length) {
             </div>
           </article>
           <p v-if="!displayWorks.length" class="empty">{{ activeTab === 'mine' ? '你还没有作品。' : '还没有公开作品。' }}</p>
+        </div>
+      </section>
+
+      <section v-if="activeTab === 'admin' && isAdmin" class="admin-page">
+        <div class="gallery-heading">
+          <div>
+            <h1>管理后台</h1>
+            <p>查看数据统计，管理用户和系统配置</p>
+          </div>
+          <button @click="loadAdminData">刷新</button>
+        </div>
+
+        <div class="admin-stats">
+          <article><span>用户数</span><strong>{{ adminStats?.userCount || 0 }}</strong></article>
+          <article><span>作品数</span><strong>{{ adminStats?.artworkCount || 0 }}</strong></article>
+          <article><span>公开作品</span><strong>{{ adminStats?.publicArtworkCount || 0 }}</strong></article>
+          <article><span>点赞</span><strong>{{ adminStats?.likeCount || 0 }}</strong></article>
+          <article><span>收藏</span><strong>{{ adminStats?.favoriteCount || 0 }}</strong></article>
+          <article><span>评论</span><strong>{{ adminStats?.commentCount || 0 }}</strong></article>
+          <article><span>下载</span><strong>{{ adminStats?.downloadCount || 0 }}</strong></article>
+        </div>
+
+        <div class="admin-grid">
+          <section class="admin-panel">
+            <div class="admin-panel-head">
+              <div>
+                <h2>系统配置</h2>
+                <p>配置会存入数据库，敏感项留空或保持掩码不会覆盖原值</p>
+              </div>
+              <button @click="saveAdminSettings">保存配置</button>
+            </div>
+            <div class="settings-form">
+              <label><span>系统名</span><input v-model="adminSettings['system.name']" /></label>
+              <label class="logo-setting">
+                <span>系统 Logo</span>
+                <div class="logo-upload-row">
+                  <label class="logo-upload">
+                    <input type="file" accept="image/*" @change="uploadSystemLogo" />
+                    <img :src="adminSettings['system.logoUrl'] || systemConfig.logoUrl" alt="系统 Logo" />
+                  </label>
+                  <input v-model="adminSettings['system.logoUrl']" placeholder="点击图片上传，或手动填写 Logo URL" />
+                </div>
+              </label>
+              <label><span>QQ 邮箱账号</span><input v-model="adminSettings['mail.username']" /></label>
+              <label><span>QQ 邮箱授权码</span><input v-model="adminSettings['mail.password']" type="password" /></label>
+              <label><span>OpenAI Base URL</span><input v-model="adminSettings['openai.baseUrl']" /></label>
+              <label><span>OpenAI API Key</span><input v-model="adminSettings['openai.apiKey']" type="password" /></label>
+              <label><span>OpenAI 模型</span><input v-model="adminSettings['openai.model']" /></label>
+              <label class="setting-check">
+                <input
+                  type="checkbox"
+                  :checked="adminSettings['openai.enabled'] === 'true'"
+                  @change="adminSettings['openai.enabled'] = $event.target.checked ? 'true' : 'false'"
+                />
+                启用 OpenAI 图片生成
+              </label>
+            </div>
+          </section>
+
+          <section class="admin-panel">
+            <div class="admin-panel-head">
+              <div>
+                <h2>用户管理</h2>
+                <p>设置用户角色，管理员入口仅对 ADMIN 可见</p>
+              </div>
+            </div>
+            <div class="admin-user-list">
+              <article v-for="user in adminUsers" :key="user.id">
+                <div>
+                  <strong>{{ user.username }}</strong>
+                  <span>{{ user.email }}</span>
+                </div>
+                <select :value="user.role" @change="changeUserRole(user, $event.target.value)">
+                  <option value="USER">USER</option>
+                  <option value="ADMIN">ADMIN</option>
+                </select>
+              </article>
+            </div>
+          </section>
         </div>
       </section>
 

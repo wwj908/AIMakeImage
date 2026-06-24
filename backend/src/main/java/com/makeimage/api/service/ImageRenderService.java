@@ -28,11 +28,13 @@ public class ImageRenderService {
 
     private final AppProperties properties;
     private final ObjectMapper objectMapper;
+    private final SystemSettingService systemSettingService;
     private final HttpClient httpClient;
 
-    public ImageRenderService(AppProperties properties, ObjectMapper objectMapper) {
+    public ImageRenderService(AppProperties properties, ObjectMapper objectMapper, SystemSettingService systemSettingService) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.systemSettingService = systemSettingService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();
@@ -104,28 +106,24 @@ public class ImageRenderService {
     private boolean useOpenAiImageGeneration() {
         AppProperties.OpenAiProperties openai = properties.getOpenai();
         return openai != null
-                && openai.isEnabled()
-                && openai.getApiKey() != null
-                && !openai.getApiKey().isBlank()
-                && openai.getBaseUrl() != null
-                && !openai.getBaseUrl().isBlank()
-                && openai.getModel() != null
-                && !openai.getModel().isBlank();
+                && systemSettingService.booleanValue("openai.enabled")
+                && !systemSettingService.value("openai.apiKey").isBlank()
+                && !systemSettingService.value("openai.baseUrl").isBlank()
+                && !systemSettingService.value("openai.model").isBlank();
     }
 
     private void renderWithImageGeneration(String prompt, String negativePrompt, Path output)
             throws IOException, InterruptedException {
-        AppProperties.OpenAiProperties openai = properties.getOpenai();
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("model", openai.getModel());
+        payload.put("model", systemSettingService.value("openai.model"));
         payload.put("prompt", buildPrompt(prompt, negativePrompt, "generate"));
         payload.put("size", detectSizeFromPrompt(prompt));
         payload.put("response_format", "b64_json");
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(normalizeBaseUrl(openai.getBaseUrl()) + "/v1/images/generations"))
+                .uri(URI.create(normalizeBaseUrl(systemSettingService.value("openai.baseUrl")) + "/v1/images/generations"))
                 .timeout(REQUEST_TIMEOUT)
-                .header("Authorization", "Bearer " + openai.getApiKey())
+                .header("Authorization", "Bearer " + systemSettingService.value("openai.apiKey"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload), StandardCharsets.UTF_8))
                 .build();
@@ -136,17 +134,16 @@ public class ImageRenderService {
 
     private void renderWithImageEdit(String prompt, String negativePrompt, Path output, MultipartFile sourceImage)
             throws IOException, InterruptedException {
-        AppProperties.OpenAiProperties openai = properties.getOpenai();
         String boundary = "----MakeImageBoundary" + System.currentTimeMillis();
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(normalizeBaseUrl(openai.getBaseUrl()) + "/v1/images/edits"))
+                .uri(URI.create(normalizeBaseUrl(systemSettingService.value("openai.baseUrl")) + "/v1/images/edits"))
                 .timeout(REQUEST_TIMEOUT)
-                .header("Authorization", "Bearer " + openai.getApiKey())
+                .header("Authorization", "Bearer " + systemSettingService.value("openai.apiKey"))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(buildMultipartBody(
                         boundary,
-                        openai.getModel(),
+                        systemSettingService.value("openai.model"),
                         buildPrompt(prompt, negativePrompt, "edit"),
                         detectSizeFromPrompt(prompt),
                         sourceImage

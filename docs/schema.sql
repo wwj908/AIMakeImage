@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(120) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   avatar_url VARCHAR(300),
+  role VARCHAR(20) NOT NULL DEFAULT 'USER',
   created_at DATETIME,
   UNIQUE KEY idx_users_username (username),
   UNIQUE KEY idx_users_email (email)
@@ -46,4 +47,12 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   UNIQUE KEY idx_chat_sessions_owner_client (owner_id, client_id),
   KEY idx_chat_sessions_owner_updated (owner_id, updated_at),
   CONSTRAINT fk_chat_sessions_owner FOREIGN KEY (owner_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  setting_key VARCHAR(80) NOT NULL,
+  setting_value VARCHAR(2000),
+  updated_at DATETIME,
+  UNIQUE KEY idx_system_settings_key (setting_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

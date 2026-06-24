@@ -41,6 +41,14 @@ public class StorageService {
         return resolvePublicBaseUrl() + "/files/uploads/" + filename;
     }
 
+    public String saveSystemAsset(MultipartFile file) throws IOException {
+        String extension = extensionOf(file.getOriginalFilename());
+        String filename = "system-logo-" + UUID.randomUUID() + extension;
+        Path target = root.resolve("uploads").resolve(filename).normalize();
+        file.transferTo(target);
+        return resolvePublicBaseUrl() + "/files/uploads/" + filename;
+    }
+
     public Resource load(String folder, String filename) throws MalformedURLException {
         if (!folder.equals("generated") && !folder.equals("uploads")) {
             throw new IllegalArgumentException("Invalid folder");

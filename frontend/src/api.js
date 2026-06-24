@@ -23,14 +23,9 @@ export function clearAuth() {
 
 function normalizeArtworkUrls(value) {
   if (!value) return value
-  if (Array.isArray(value)) {
-    return value.map(normalizeArtworkUrls)
-  }
+  if (Array.isArray(value)) return value.map(normalizeArtworkUrls)
   if (value.content && Array.isArray(value.content)) {
-    return {
-      ...value,
-      content: value.content.map(normalizeArtworkUrls)
-    }
+    return { ...value, content: value.content.map(normalizeArtworkUrls) }
   }
   if (typeof value === 'object' && value.imageUrl) {
     const backendBase = `${window.location.protocol}//${window.location.hostname}:8080`
@@ -72,6 +67,7 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ email })
   }),
+  publicSystem: () => request('/api/public/system'),
   login: (data) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
   generate: (data) => request('/api/artworks/generate', { method: 'POST', body: JSON.stringify(data) }),
   edit: (data, image) => {
@@ -117,5 +113,21 @@ export const api = {
     method: 'PATCH',
     body: JSON.stringify({ pinned })
   }),
-  deleteChatSession: (clientId) => request(`/api/chat-sessions/${encodeURIComponent(clientId)}`, { method: 'DELETE' })
+  deleteChatSession: (clientId) => request(`/api/chat-sessions/${encodeURIComponent(clientId)}`, { method: 'DELETE' }),
+  adminStats: () => request('/api/admin/stats'),
+  adminUsers: () => request('/api/admin/users'),
+  updateUserRole: (id, role) => request(`/api/admin/users/${id}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role })
+  }),
+  adminSettings: () => request('/api/admin/settings'),
+  updateAdminSettings: (settings) => request('/api/admin/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ settings })
+  }),
+  uploadSystemLogo: (image) => {
+    const form = new FormData()
+    form.append('image', image)
+    return request('/api/admin/settings/logo', { method: 'POST', body: form })
+  }
 }

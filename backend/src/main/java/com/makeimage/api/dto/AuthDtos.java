@@ -22,7 +22,7 @@ public class AuthDtos {
     ) {
     }
 
-    public record UserView(Long id, String username, String email, String avatarUrl) {
+    public record UserView(Long id, String username, String email, String avatarUrl, String role) {
     }
 
     public record AuthResponse(String token, UserView user) {

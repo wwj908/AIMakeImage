@@ -39,6 +39,6 @@ public class AuthController {
     public ApiResponse<AuthDtos.UserView> me() {
         var current = SecurityUtils.currentUser();
         var user = userRepository.findById(current.id()).orElseThrow();
-        return ApiResponse.ok(new AuthDtos.UserView(user.getId(), user.getUsername(), user.getEmail(), user.getAvatarUrl()));
+        return ApiResponse.ok(new AuthDtos.UserView(user.getId(), user.getUsername(), user.getEmail(), user.getAvatarUrl(), user.getRole()));
     }
 }

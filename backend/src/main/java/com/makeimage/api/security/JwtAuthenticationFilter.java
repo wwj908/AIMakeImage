@@ -30,7 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 var auth = new UsernamePasswordAuthenticationToken(
                         currentUser,
                         null,
-                        AuthorityUtils.createAuthorityList("ROLE_USER")
+                        AuthorityUtils.createAuthorityList("ROLE_" + currentUser.role())
                 );
                 SecurityContextHolder.getContext().setAuthentication(auth);
             } catch (Exception ignored) {
