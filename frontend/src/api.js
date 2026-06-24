@@ -48,12 +48,14 @@ async function request(path, options = {}) {
   if (state.token) {
     headers.Authorization = `Bearer ${state.token}`
   }
+
   let res
   try {
     res = await fetch(`${API_BASE}${path}`, { ...options, headers })
   } catch (error) {
     throw new Error(`无法连接后端服务：${API_BASE}`)
   }
+
   const payload = await res.json()
   if (!res.ok || !payload.success) {
     throw new Error(payload.message || '请求失败')
@@ -124,6 +126,11 @@ export const api = {
   updateAdminSettings: (settings) => request('/api/admin/settings', {
     method: 'PUT',
     body: JSON.stringify({ settings })
+  }),
+  adminOpenAiProviders: () => request('/api/admin/openai-providers'),
+  updateAdminOpenAiProviders: (providers) => request('/api/admin/openai-providers', {
+    method: 'PUT',
+    body: JSON.stringify({ providers })
   }),
   uploadSystemLogo: (image) => {
     const form = new FormData()

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 public class AdminDtos {
@@ -32,5 +33,30 @@ public class AdminDtos {
     }
 
     public record SettingsRequest(Map<String, String> settings) {
+    }
+
+    public record OpenAiProviderView(
+            Long id,
+            String name,
+            String baseUrl,
+            String apiKey,
+            String model,
+            boolean enabled,
+            Integer sortOrder
+    ) {
+    }
+
+    public record OpenAiProviderRequest(
+            Long id,
+            String name,
+            String baseUrl,
+            String apiKey,
+            String model,
+            Boolean enabled,
+            Integer sortOrder
+    ) {
+    }
+
+    public record OpenAiProvidersRequest(List<OpenAiProviderRequest> providers) {
     }
 }

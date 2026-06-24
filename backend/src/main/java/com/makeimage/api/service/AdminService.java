@@ -19,6 +19,7 @@ public class AdminService {
     private final ArtworkFavoriteRepository artworkFavoriteRepository;
     private final ArtworkCommentRepository artworkCommentRepository;
     private final SystemSettingService systemSettingService;
+    private final OpenAiProviderService openAiProviderService;
     private final StorageService storageService;
 
     public AdminService(
@@ -28,6 +29,7 @@ public class AdminService {
             ArtworkFavoriteRepository artworkFavoriteRepository,
             ArtworkCommentRepository artworkCommentRepository,
             SystemSettingService systemSettingService,
+            OpenAiProviderService openAiProviderService,
             StorageService storageService
     ) {
         this.userRepository = userRepository;
@@ -36,6 +38,7 @@ public class AdminService {
         this.artworkFavoriteRepository = artworkFavoriteRepository;
         this.artworkCommentRepository = artworkCommentRepository;
         this.systemSettingService = systemSettingService;
+        this.openAiProviderService = openAiProviderService;
         this.storageService = storageService;
     }
 
@@ -72,10 +75,21 @@ public class AdminService {
         return systemSettingService.allForAdmin();
     }
 
+    public List<AdminDtos.OpenAiProviderView> openAiProviders(CurrentUser currentUser) {
+        requireAdmin(currentUser);
+        return openAiProviderService.allForAdmin();
+    }
+
     @Transactional
     public Map<String, String> updateSettings(CurrentUser currentUser, Map<String, String> settings) {
         requireAdmin(currentUser);
         return systemSettingService.update(settings == null ? Map.of() : settings);
+    }
+
+    @Transactional
+    public List<AdminDtos.OpenAiProviderView> updateOpenAiProviders(CurrentUser currentUser, List<AdminDtos.OpenAiProviderRequest> providers) {
+        requireAdmin(currentUser);
+        return openAiProviderService.update(providers);
     }
 
     @Transactional

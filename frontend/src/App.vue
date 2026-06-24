@@ -35,6 +35,8 @@ const uploadArtworkForm = reactive({
 const adminStats = ref(null)
 const adminUsers = ref([])
 const adminSettings = reactive({})
+const adminOpenAiProviders = ref([])
+const adminSection = ref('dashboard')
 const systemConfig = reactive({ name: 'MakeImage AI', logoUrl: '/image.png' })
 const conversation = ref([])
 const conversationSessions = ref(loadSessions())
@@ -756,15 +758,17 @@ function applySystemConfig(settings) {
 
 async function loadAdminData() {
   if (!isAdmin.value) return
-  const [stats, users, settings] = await Promise.all([
+  const [stats, users, settings, providers] = await Promise.all([
     api.adminStats(),
     api.adminUsers(),
-    api.adminSettings()
+    api.adminSettings(),
+    api.adminOpenAiProviders()
   ])
   adminStats.value = stats
   adminUsers.value = users
   Object.keys(adminSettings).forEach((key) => delete adminSettings[key])
   Object.assign(adminSettings, settings)
+  adminOpenAiProviders.value = normalizeProviderSort(providers)
 }
 
 async function saveAdminSettings() {
@@ -774,6 +778,55 @@ async function saveAdminSettings() {
     Object.assign(adminSettings, updated)
     applySystemConfig(updated)
     toast('系统配置已保存')
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+function normalizeProviderSort(providers) {
+  return (providers || []).map((provider, index) => ({
+    id: provider.id || null,
+    name: provider.name || `OpenAI 渠道 ${index + 1}`,
+    baseUrl: provider.baseUrl || '',
+    apiKey: provider.apiKey || '',
+    model: provider.model || 'gpt-image-2',
+    enabled: Boolean(provider.enabled),
+    sortOrder: index + 1
+  }))
+}
+
+function addOpenAiProvider() {
+  adminOpenAiProviders.value.push({
+    id: null,
+    name: `OpenAI 渠道 ${adminOpenAiProviders.value.length + 1}`,
+    baseUrl: '',
+    apiKey: '',
+    model: 'gpt-image-2',
+    enabled: true,
+    sortOrder: adminOpenAiProviders.value.length + 1
+  })
+}
+
+function removeOpenAiProvider(index) {
+  adminOpenAiProviders.value.splice(index, 1)
+  adminOpenAiProviders.value = normalizeProviderSort(adminOpenAiProviders.value)
+}
+
+function moveOpenAiProvider(index, direction) {
+  const target = index + direction
+  if (target < 0 || target >= adminOpenAiProviders.value.length) return
+  const providers = [...adminOpenAiProviders.value]
+  const [item] = providers.splice(index, 1)
+  providers.splice(target, 0, item)
+  adminOpenAiProviders.value = normalizeProviderSort(providers)
+}
+
+async function saveOpenAiProviders() {
+  try {
+    const providers = normalizeProviderSort(adminOpenAiProviders.value)
+    const updated = await api.updateAdminOpenAiProviders(providers)
+    adminOpenAiProviders.value = normalizeProviderSort(updated)
+    toast('OpenAI 渠道已保存')
   } catch (error) {
     toast(error.message)
   }
@@ -1137,7 +1190,7 @@ if (!conversationSessions.value.length) {
           >
             <div class="message-body">
               <div class="message-meta">
-                <strong>{{ item.role === 'assistant' ? 'MakeImage AI' : accountName }}</strong>
+                <strong>{{ item.role === 'assistant' ? systemConfig.name : accountName }}</strong>
                 <span v-if="item.style">{{ item.style }} 路 {{ item.ratio }}</span>
                 <span v-if="item.role === 'user' && item.createdAt">{{ formatMessageTime(item.createdAt) }}</span>
                 <span v-if="item.role === 'assistant' && (item.answeredAt || item.createdAt)">
@@ -1348,7 +1401,14 @@ if (!conversationSessions.value.length) {
           <button @click="loadAdminData">刷新</button>
         </div>
 
-        <div class="admin-stats">
+        <div class="admin-section-nav">
+          <button type="button" :class="{ active: adminSection === 'dashboard' }" @click="adminSection = 'dashboard'">数据面板</button>
+          <button type="button" :class="{ active: adminSection === 'settings' }" @click="adminSection = 'settings'">系统配置</button>
+          <button type="button" :class="{ active: adminSection === 'providers' }" @click="adminSection = 'providers'">OpenAI 渠道</button>
+          <button type="button" :class="{ active: adminSection === 'users' }" @click="adminSection = 'users'">用户管理</button>
+        </div>
+
+        <div v-if="adminSection === 'dashboard'" class="admin-stats">
           <article><span>用户数</span><strong>{{ adminStats?.userCount || 0 }}</strong></article>
           <article><span>作品数</span><strong>{{ adminStats?.artworkCount || 0 }}</strong></article>
           <article><span>公开作品</span><strong>{{ adminStats?.publicArtworkCount || 0 }}</strong></article>
@@ -1358,7 +1418,36 @@ if (!conversationSessions.value.length) {
           <article><span>下载</span><strong>{{ adminStats?.downloadCount || 0 }}</strong></article>
         </div>
 
-        <div class="admin-grid">
+        <div v-if="adminSection === 'dashboard'" class="admin-dashboard-summary">
+          <section class="admin-panel">
+            <div class="admin-panel-head">
+              <div>
+                <h2>数据面板</h2>
+                <p>这里集中查看当前平台的用户、作品与互动数据概览</p>
+              </div>
+            </div>
+            <div class="admin-overview-grid">
+              <article>
+                <span>当前系统</span>
+                <strong>{{ systemConfig.name }}</strong>
+              </article>
+              <article>
+                <span>启用渠道数</span>
+                <strong>{{ adminOpenAiProviders.filter((item) => item.enabled).length }}</strong>
+              </article>
+              <article>
+                <span>管理员数</span>
+                <strong>{{ adminUsers.filter((item) => item.role === 'ADMIN').length }}</strong>
+              </article>
+              <article>
+                <span>普通用户数</span>
+                <strong>{{ adminUsers.filter((item) => item.role === 'USER').length }}</strong>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <div v-if="adminSection === 'settings'" class="admin-grid admin-grid-single">
           <section class="admin-panel">
             <div class="admin-panel-head">
               <div>
@@ -1381,20 +1470,49 @@ if (!conversationSessions.value.length) {
               </label>
               <label><span>QQ 邮箱账号</span><input v-model="adminSettings['mail.username']" /></label>
               <label><span>QQ 邮箱授权码</span><input v-model="adminSettings['mail.password']" type="password" /></label>
-              <label><span>OpenAI Base URL</span><input v-model="adminSettings['openai.baseUrl']" /></label>
-              <label><span>OpenAI API Key</span><input v-model="adminSettings['openai.apiKey']" type="password" /></label>
-              <label><span>OpenAI 模型</span><input v-model="adminSettings['openai.model']" /></label>
-              <label class="setting-check">
-                <input
-                  type="checkbox"
-                  :checked="adminSettings['openai.enabled'] === 'true'"
-                  @change="adminSettings['openai.enabled'] = $event.target.checked ? 'true' : 'false'"
-                />
-                启用 OpenAI 图片生成
-              </label>
             </div>
           </section>
+        </div>
 
+        <div v-if="adminSection === 'providers'" class="admin-grid admin-grid-single">
+          <section class="admin-panel openai-panel">
+            <div class="admin-panel-head">
+              <div>
+                <h2>OpenAI 渠道</h2>
+                <p>可配置多个 Base URL 和 API Key，生成时优先使用启用且排序靠前的渠道</p>
+              </div>
+              <div class="admin-actions">
+                <button type="button" @click="addOpenAiProvider">新增渠道</button>
+                <button type="button" @click="saveOpenAiProviders">保存渠道</button>
+              </div>
+            </div>
+            <div class="provider-list">
+              <article v-for="(provider, index) in adminOpenAiProviders" :key="provider.id || index" class="provider-card">
+                <div class="provider-card-head">
+                  <strong>#{{ index + 1 }} {{ provider.name || 'OpenAI 渠道' }}</strong>
+                  <label class="provider-switch">
+                    <input type="checkbox" v-model="provider.enabled" />
+                    <span>{{ provider.enabled ? '启用' : '禁用' }}</span>
+                  </label>
+                </div>
+                <div class="provider-fields">
+                  <label><span>渠道名称</span><input v-model="provider.name" placeholder="例如：瑞星图" /></label>
+                  <label><span>模型</span><input v-model="provider.model" placeholder="例如：gpt-image-2" /></label>
+                  <label class="wide"><span>OpenAI Base URL</span><input v-model="provider.baseUrl" placeholder="https://api.example.com" /></label>
+                  <label class="wide"><span>OpenAI API Key</span><input v-model="provider.apiKey" type="password" placeholder="留空或保持掩码则不修改" /></label>
+                </div>
+                <div class="provider-actions">
+                  <button type="button" :disabled="index === 0" @click="moveOpenAiProvider(index, -1)">上移</button>
+                  <button type="button" :disabled="index === adminOpenAiProviders.length - 1" @click="moveOpenAiProvider(index, 1)">下移</button>
+                  <button type="button" class="danger" @click="removeOpenAiProvider(index)">删除</button>
+                </div>
+              </article>
+              <p v-if="!adminOpenAiProviders.length" class="empty">还没有 OpenAI 渠道，点击“新增渠道”添加。</p>
+            </div>
+          </section>
+        </div>
+
+        <div v-if="adminSection === 'users'" class="admin-grid admin-grid-single">
           <section class="admin-panel">
             <div class="admin-panel-head">
               <div>
@@ -1428,7 +1546,7 @@ if (!conversationSessions.value.length) {
         <form class="login-modal" @submit.prevent="submitAuth">
           <button type="button" class="modal-close" @click="showAuthModal = false">×</button>
           <div class="modal-head">
-            <h2>{{ authMode === 'login' ? '登录 MakeImage' : '创建账号' }}</h2>
+            <h2>{{ authMode === 'login' ? `登录 ${systemConfig.name}` : `注册 ${systemConfig.name}` }}</h2>
             <p>{{ authMode === 'login' ? '登录后即可生成、保存和发布作品' : '创建账号后开始你的 AI 图片创作' }}</p>
           </div>
           <div class="auth-switch">

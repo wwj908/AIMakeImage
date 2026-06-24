@@ -56,3 +56,16 @@ CREATE TABLE IF NOT EXISTS system_settings (
   updated_at DATETIME,
   UNIQUE KEY idx_system_settings_key (setting_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS openai_providers (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(80) NOT NULL,
+  base_url VARCHAR(500) NOT NULL,
+  api_key VARCHAR(1000) NOT NULL,
+  model VARCHAR(120) NOT NULL,
+  enabled BIT NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 1,
+  created_at DATETIME,
+  updated_at DATETIME,
+  KEY idx_openai_providers_enabled_sort (enabled, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -45,6 +45,16 @@ public class AdminController {
         return ApiResponse.ok(adminService.updateSettings(SecurityUtils.currentUser(), request.settings()));
     }
 
+    @GetMapping("/openai-providers")
+    public ApiResponse<List<AdminDtos.OpenAiProviderView>> openAiProviders() {
+        return ApiResponse.ok(adminService.openAiProviders(SecurityUtils.currentUser()));
+    }
+
+    @PutMapping("/openai-providers")
+    public ApiResponse<List<AdminDtos.OpenAiProviderView>> updateOpenAiProviders(@RequestBody AdminDtos.OpenAiProvidersRequest request) {
+        return ApiResponse.ok(adminService.updateOpenAiProviders(SecurityUtils.currentUser(), request.providers()));
+    }
+
     @PostMapping("/settings/logo")
     public ApiResponse<Map<String, String>> uploadLogo(@RequestPart("image") MultipartFile image) throws Exception {
         return ApiResponse.ok(adminService.uploadLogo(SecurityUtils.currentUser(), image));

@@ -2,7 +2,6 @@ package com.makeimage.api.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.makeimage.api.config.AppProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,29 +25,26 @@ public class ImageRenderService {
     private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(8);
     private static final int MAX_ATTEMPTS = 2;
 
-    private final AppProperties properties;
     private final ObjectMapper objectMapper;
-    private final SystemSettingService systemSettingService;
+    private final OpenAiProviderService openAiProviderService;
     private final HttpClient httpClient;
 
-    public ImageRenderService(AppProperties properties, ObjectMapper objectMapper, SystemSettingService systemSettingService) {
-        this.properties = properties;
+    public ImageRenderService(ObjectMapper objectMapper, OpenAiProviderService openAiProviderService) {
         this.objectMapper = objectMapper;
-        this.systemSettingService = systemSettingService;
+        this.openAiProviderService = openAiProviderService;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();
     }
 
     public void render(String prompt, String negativePrompt, String mode, Path output, MultipartFile sourceImage) throws IOException {
-        if (!useOpenAiImageGeneration()) {
-            throw new IllegalStateException("OpenAI 图片生成功能未启用，请检查 app.openai.enabled 和 OPENAI_API_KEY");
-        }
+        OpenAiProviderService.ProviderConfig provider = openAiProviderService.activeProvider()
+                .orElseThrow(() -> new IllegalStateException("OpenAI 图片生成渠道未启用，请在管理后台添加并启用渠道"));
         try {
             if ("edit".equals(mode) && sourceImage != null && !sourceImage.isEmpty()) {
-                retryRender(() -> renderWithImageEdit(prompt, negativePrompt, output, sourceImage));
+                retryRender(() -> renderWithImageEdit(provider, prompt, negativePrompt, output, sourceImage));
             } else {
-                retryRender(() -> renderWithImageGeneration(prompt, negativePrompt, output));
+                retryRender(() -> renderWithImageGeneration(provider, prompt, negativePrompt, output));
             }
         } catch (IllegalStateException exception) {
             throw exception;
@@ -103,27 +99,18 @@ public class ImageRenderService {
         return false;
     }
 
-    private boolean useOpenAiImageGeneration() {
-        AppProperties.OpenAiProperties openai = properties.getOpenai();
-        return openai != null
-                && systemSettingService.booleanValue("openai.enabled")
-                && !systemSettingService.value("openai.apiKey").isBlank()
-                && !systemSettingService.value("openai.baseUrl").isBlank()
-                && !systemSettingService.value("openai.model").isBlank();
-    }
-
-    private void renderWithImageGeneration(String prompt, String negativePrompt, Path output)
+    private void renderWithImageGeneration(OpenAiProviderService.ProviderConfig provider, String prompt, String negativePrompt, Path output)
             throws IOException, InterruptedException {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("model", systemSettingService.value("openai.model"));
+        payload.put("model", provider.model());
         payload.put("prompt", buildPrompt(prompt, negativePrompt, "generate"));
         payload.put("size", detectSizeFromPrompt(prompt));
         payload.put("response_format", "b64_json");
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(normalizeBaseUrl(systemSettingService.value("openai.baseUrl")) + "/v1/images/generations"))
+                .uri(URI.create(normalizeBaseUrl(provider.baseUrl()) + "/v1/images/generations"))
                 .timeout(REQUEST_TIMEOUT)
-                .header("Authorization", "Bearer " + systemSettingService.value("openai.apiKey"))
+                .header("Authorization", "Bearer " + provider.apiKey())
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload), StandardCharsets.UTF_8))
                 .build();
@@ -132,18 +119,18 @@ public class ImageRenderService {
         writeImageResponse(response, output);
     }
 
-    private void renderWithImageEdit(String prompt, String negativePrompt, Path output, MultipartFile sourceImage)
+    private void renderWithImageEdit(OpenAiProviderService.ProviderConfig provider, String prompt, String negativePrompt, Path output, MultipartFile sourceImage)
             throws IOException, InterruptedException {
         String boundary = "----MakeImageBoundary" + System.currentTimeMillis();
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(normalizeBaseUrl(systemSettingService.value("openai.baseUrl")) + "/v1/images/edits"))
+                .uri(URI.create(normalizeBaseUrl(provider.baseUrl()) + "/v1/images/edits"))
                 .timeout(REQUEST_TIMEOUT)
-                .header("Authorization", "Bearer " + systemSettingService.value("openai.apiKey"))
+                .header("Authorization", "Bearer " + provider.apiKey())
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(buildMultipartBody(
                         boundary,
-                        systemSettingService.value("openai.model"),
+                        provider.model(),
                         buildPrompt(prompt, negativePrompt, "edit"),
                         detectSizeFromPrompt(prompt),
                         sourceImage
