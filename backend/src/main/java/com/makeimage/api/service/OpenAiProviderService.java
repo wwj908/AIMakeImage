@@ -1,6 +1,5 @@
 package com.makeimage.api.service;
 
-import com.makeimage.api.config.AppProperties;
 import com.makeimage.api.dto.AdminDtos;
 import com.makeimage.api.entity.OpenAiProvider;
 import com.makeimage.api.repository.OpenAiProviderRepository;
@@ -19,18 +18,13 @@ import java.util.stream.Collectors;
 @Service
 public class OpenAiProviderService {
     private final OpenAiProviderRepository repository;
-    private final AppProperties properties;
 
-    public OpenAiProviderService(OpenAiProviderRepository repository, AppProperties properties) {
+    public OpenAiProviderService(OpenAiProviderRepository repository) {
         this.repository = repository;
-        this.properties = properties;
     }
 
     @Transactional(readOnly = true)
     public Optional<ProviderConfig> activeProvider() {
-        if (repository.count() == 0) {
-            return defaultProviderConfig();
-        }
         Optional<OpenAiProvider> provider = repository.findFirstByEnabledTrueOrderBySortOrderAscIdAsc();
         if (provider.isPresent()) {
             OpenAiProvider value = provider.get();
@@ -41,9 +35,8 @@ public class OpenAiProviderService {
         return Optional.empty();
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<AdminDtos.OpenAiProviderView> allForAdmin() {
-        ensureDefaultProvider();
         return repository.findAllByOrderBySortOrderAscIdAsc().stream()
                 .map(this::toView)
                 .toList();
@@ -90,36 +83,6 @@ public class OpenAiProviderService {
                 .sorted(Comparator.comparing(OpenAiProvider::getSortOrder).thenComparing(OpenAiProvider::getId))
                 .map(this::toView)
                 .toList();
-    }
-
-    private void ensureDefaultProvider() {
-        if (repository.count() > 0) {
-            return;
-        }
-        defaultProviderConfig().ifPresent(config -> {
-            OpenAiProvider provider = new OpenAiProvider();
-            provider.setName("默认 OpenAI 兼容接口");
-            provider.setBaseUrl(config.baseUrl());
-            provider.setApiKey(config.apiKey());
-            provider.setModel(config.model());
-            provider.setEnabled(true);
-            provider.setSortOrder(1);
-            repository.save(provider);
-        });
-    }
-
-    private Optional<ProviderConfig> defaultProviderConfig() {
-        AppProperties.OpenAiProperties openai = properties.getOpenai();
-        if (openai == null || !openai.isEnabled()) {
-            return Optional.empty();
-        }
-        String baseUrl = openai.getBaseUrl() == null ? "" : openai.getBaseUrl().trim();
-        String apiKey = openai.getApiKey() == null ? "" : openai.getApiKey().trim();
-        String model = openai.getModel() == null ? "" : openai.getModel().trim();
-        if (baseUrl.isBlank() || apiKey.isBlank() || model.isBlank()) {
-            return Optional.empty();
-        }
-        return Optional.of(new ProviderConfig("默认 OpenAI 兼容接口", baseUrl, apiKey, model));
     }
 
     private void validate(OpenAiProvider provider) {

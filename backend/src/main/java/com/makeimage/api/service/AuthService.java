@@ -44,13 +44,16 @@ public class AuthService {
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("邮箱已注册");
         }
+
         String from = systemSettingService.value("mail.username");
-        if (from == null || from.isBlank() || systemSettingService.value("mail.password").isBlank()) {
+        String password = systemSettingService.value("mail.password");
+        if (from == null || from.isBlank() || password.isBlank()) {
             throw new IllegalStateException("QQ 邮箱服务未配置");
         }
+
         String cooldownKey = emailCooldownKey(email);
         if (Boolean.TRUE.equals(redisTemplate.hasKey(cooldownKey))) {
-            throw new IllegalArgumentException("验证码发送太频繁，请稍后再试");
+            throw new IllegalArgumentException("验证码发送过于频繁，请稍后再试");
         }
 
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
@@ -62,13 +65,14 @@ public class AuthService {
         message.setTo(email);
         message.setSubject("MakeImage 注册验证码");
         message.setText("你的 MakeImage 注册验证码是：" + code + "\n\n验证码 10 分钟内有效，请勿泄露给他人。");
-        mailSender().send(message);
+        mailSender(from, password).send(message);
     }
 
     public AuthDtos.AuthResponse register(AuthDtos.RegisterRequest request) {
         String username = request.username().trim();
         String email = request.email().trim().toLowerCase();
         verifyEmailCode(email, request.emailCode());
+
         if (userRepository.existsByUsername(username)) {
             throw new IllegalArgumentException("用户名已存在");
         }
@@ -82,6 +86,7 @@ public class AuthService {
         user.setRole("USER");
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         userRepository.save(user);
+
         redisTemplate.delete(emailCodeKey(email));
         return authResponse(user);
     }
@@ -113,16 +118,19 @@ public class AuthService {
 
     private AuthDtos.AuthResponse authResponse(User user) {
         String token = jwtService.createToken(user.getId(), user.getUsername(), user.getRole());
-        return new AuthDtos.AuthResponse(token, new AuthDtos.UserView(user.getId(), user.getUsername(), user.getEmail(), user.getAvatarUrl(), user.getRole()));
+        return new AuthDtos.AuthResponse(
+                token,
+                new AuthDtos.UserView(user.getId(), user.getUsername(), user.getEmail(), user.getAvatarUrl(), user.getRole())
+        );
     }
 
-    private JavaMailSenderImpl mailSender() {
+    private JavaMailSenderImpl mailSender(String username, String password) {
         JavaMailSenderImpl sender = new JavaMailSenderImpl();
         sender.setHost("smtp.qq.com");
         sender.setPort(465);
         sender.setProtocol("smtps");
-        sender.setUsername(systemSettingService.value("mail.username"));
-        sender.setPassword(systemSettingService.value("mail.password"));
+        sender.setUsername(username);
+        sender.setPassword(password);
         sender.getJavaMailProperties().put("mail.smtp.auth", "true");
         sender.getJavaMailProperties().put("mail.smtp.ssl.enable", "true");
         return sender;

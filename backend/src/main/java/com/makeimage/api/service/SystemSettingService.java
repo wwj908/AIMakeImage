@@ -1,9 +1,7 @@
 package com.makeimage.api.service;
 
-import com.makeimage.api.config.AppProperties;
 import com.makeimage.api.entity.SystemSetting;
 import com.makeimage.api.repository.SystemSettingRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,39 +15,20 @@ public class SystemSettingService {
             "system.name",
             "system.logoUrl",
             "mail.username",
-            "mail.password",
-            "openai.enabled",
-            "openai.baseUrl",
-            "openai.apiKey",
-            "openai.model"
+            "mail.password"
     );
 
     private final SystemSettingRepository repository;
-    private final AppProperties appProperties;
-    private final String mailUsername;
-    private final String mailPassword;
 
-    public SystemSettingService(
-            SystemSettingRepository repository,
-            AppProperties appProperties,
-            @Value("${spring.mail.username:}") String mailUsername,
-            @Value("${spring.mail.password:}") String mailPassword
-    ) {
+    public SystemSettingService(SystemSettingRepository repository) {
         this.repository = repository;
-        this.appProperties = appProperties;
-        this.mailUsername = mailUsername;
-        this.mailPassword = mailPassword;
     }
 
     public String value(String key) {
         return repository.findByKey(key)
                 .map(SystemSetting::getValue)
                 .filter(value -> value != null && !value.isBlank())
-                .orElseGet(() -> defaultValue(key));
-    }
-
-    public boolean booleanValue(String key) {
-        return Boolean.parseBoolean(value(key));
+                .orElse(defaultValue(key));
     }
 
     public Map<String, String> allForAdmin() {
@@ -87,16 +66,9 @@ public class SystemSettingService {
     }
 
     private String defaultValue(String key) {
-        AppProperties.OpenAiProperties openai = appProperties.getOpenai();
         return switch (key) {
             case "system.name" -> "MakeImage AI";
             case "system.logoUrl" -> "/image.png";
-            case "mail.username" -> mailUsername == null ? "" : mailUsername;
-            case "mail.password" -> mailPassword == null ? "" : mailPassword;
-            case "openai.enabled" -> String.valueOf(openai != null && openai.isEnabled());
-            case "openai.baseUrl" -> openai == null || openai.getBaseUrl() == null ? "" : openai.getBaseUrl();
-            case "openai.apiKey" -> openai == null || openai.getApiKey() == null ? "" : openai.getApiKey();
-            case "openai.model" -> openai == null || openai.getModel() == null ? "" : openai.getModel();
             default -> "";
         };
     }
