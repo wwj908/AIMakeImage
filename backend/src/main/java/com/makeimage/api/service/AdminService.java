@@ -2,7 +2,11 @@ package com.makeimage.api.service;
 
 import com.makeimage.api.dto.AdminDtos;
 import com.makeimage.api.entity.User;
-import com.makeimage.api.repository.*;
+import com.makeimage.api.repository.ArtworkCommentRepository;
+import com.makeimage.api.repository.ArtworkFavoriteRepository;
+import com.makeimage.api.repository.ArtworkLikeRepository;
+import com.makeimage.api.repository.ArtworkRepository;
+import com.makeimage.api.repository.UserRepository;
 import com.makeimage.api.security.CurrentUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +25,7 @@ public class AdminService {
     private final SystemSettingService systemSettingService;
     private final OpenAiProviderService openAiProviderService;
     private final StorageService storageService;
+    private final ThumbnailService thumbnailService;
 
     public AdminService(
             UserRepository userRepository,
@@ -30,7 +35,8 @@ public class AdminService {
             ArtworkCommentRepository artworkCommentRepository,
             SystemSettingService systemSettingService,
             OpenAiProviderService openAiProviderService,
-            StorageService storageService
+            StorageService storageService,
+            ThumbnailService thumbnailService
     ) {
         this.userRepository = userRepository;
         this.artworkRepository = artworkRepository;
@@ -40,6 +46,7 @@ public class AdminService {
         this.systemSettingService = systemSettingService;
         this.openAiProviderService = openAiProviderService;
         this.storageService = storageService;
+        this.thumbnailService = thumbnailService;
     }
 
     public AdminDtos.StatsView stats(CurrentUser currentUser) {
@@ -65,7 +72,7 @@ public class AdminService {
     @Transactional
     public AdminDtos.AdminUserView updateRole(CurrentUser currentUser, Long userId, String role) {
         requireAdmin(currentUser);
-        User user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
         user.setRole(role);
         return toUserView(userRepository.saveAndFlush(user));
     }
@@ -96,15 +103,21 @@ public class AdminService {
     public Map<String, String> uploadLogo(CurrentUser currentUser, MultipartFile file) throws Exception {
         requireAdmin(currentUser);
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("请上传系统 Logo");
+            throw new IllegalArgumentException("Please upload a logo image");
         }
         String logoUrl = storageService.saveSystemAsset(file);
         return systemSettingService.update(Map.of("system.logoUrl", logoUrl));
     }
 
+    @Transactional
+    public Integer regenerateThumbnails(CurrentUser currentUser) throws Exception {
+        requireAdmin(currentUser);
+        return thumbnailService.generateMissingThumbnails();
+    }
+
     private void requireAdmin(CurrentUser currentUser) {
         if (currentUser == null || !"ADMIN".equals(currentUser.role())) {
-            throw new IllegalArgumentException("需要管理员权限");
+            throw new IllegalArgumentException("Admin permission required");
         }
     }
 

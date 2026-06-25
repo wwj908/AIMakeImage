@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -23,6 +24,7 @@ public class StorageService {
         this.root = Path.of(properties.getStorageDir()).toAbsolutePath().normalize();
         Files.createDirectories(root.resolve("generated"));
         Files.createDirectories(root.resolve("uploads"));
+        Files.createDirectories(root.resolve("thumbnails"));
     }
 
     public Path generatedPath(String filename) {
@@ -31,6 +33,15 @@ public class StorageService {
 
     public String publicGeneratedUrl(String filename) {
         return resolvePublicBaseUrl() + "/files/generated/" + filename;
+    }
+
+    public String publicThumbnailUrl(String filename) {
+        String thumbName = thumbnailName(filename);
+        return resolveThumbnailBaseUrl() + "/files/thumbnails/" + thumbName;
+    }
+
+    public Path thumbnailPath(String filename) {
+        return root.resolve("thumbnails").resolve(thumbnailName(filename)).normalize();
     }
 
     public String saveUpload(MultipartFile file) throws IOException {
@@ -50,7 +61,7 @@ public class StorageService {
     }
 
     public Resource load(String folder, String filename) throws MalformedURLException {
-        if (!folder.equals("generated") && !folder.equals("uploads")) {
+        if (!folder.equals("generated") && !folder.equals("uploads") && !folder.equals("thumbnails")) {
             throw new IllegalArgumentException("Invalid folder");
         }
         Path file = root.resolve(folder).resolve(filename).normalize();
@@ -69,10 +80,31 @@ public class StorageService {
     }
 
     private String resolvePublicBaseUrl() {
+        String configured = properties.getPublicBaseUrl();
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
         try {
             return ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
         } catch (Exception ignored) {
-            return properties.getPublicBaseUrl();
+            return "http://localhost:8080";
         }
+    }
+
+    private String resolveThumbnailBaseUrl() {
+        String thumbnailBase = properties.getThumbnailBaseUrl();
+        if (thumbnailBase != null && !thumbnailBase.isBlank()) {
+            return thumbnailBase;
+        }
+        return resolvePublicBaseUrl();
+    }
+
+    private String thumbnailName(String filename) {
+        String lower = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
+        int dot = lower.lastIndexOf('.');
+        if (dot < 0) {
+            return filename + ".jpg";
+        }
+        return filename.substring(0, dot) + ".jpg";
     }
 }

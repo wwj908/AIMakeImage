@@ -189,6 +189,10 @@ function cloneData(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+function displayImageUrl(work) {
+  return work?.thumbnailUrl || work?.imageUrl || ''
+}
+
 function sessionStorageKey() {
   return state.user?.id ? `${SESSION_STORAGE_KEY}:${state.user.id}` : SESSION_STORAGE_KEY
 }
@@ -1170,7 +1174,7 @@ if (!conversationSessions.value.length) {
               class="hero-work-card"
               @click="openPreview(work)"
             >
-              <img :src="work.imageUrl" :alt="work.title" />
+              <img :src="displayImageUrl(work)" :alt="work.title" loading="lazy" decoding="async" />
               <div class="hero-work-mask">
                 <strong>{{ work.title }}</strong>
                 <span>@{{ work.ownerName }}</span>
@@ -1230,7 +1234,7 @@ if (!conversationSessions.value.length) {
                     <span>{{ item.work.publicWork ? '已公开' : '仅自己可见' }}</span>
                   </div>
                   <div class="result-card">
-                    <img :src="item.work.imageUrl" :alt="item.work.title" />
+                    <img :src="displayImageUrl(item.work)" :alt="item.work.title" loading="lazy" decoding="async" />
                     <div class="result-actions">
                       <button class="icon-pill" @click="openPreview(item.work)" title="查看图片">👁</button>
                       <button :class="{ active: item.work.liked }" @click="toggleLike(item.work)">赞 {{ item.work.likeCount || 0 }}</button>
@@ -1367,7 +1371,7 @@ if (!conversationSessions.value.length) {
         </div>
         <div class="works-grid">
           <article v-for="work in displayWorks" :key="work.id" class="work-card">
-            <img :src="work.imageUrl" :alt="work.title" />
+            <img :src="displayImageUrl(work)" :alt="work.title" loading="lazy" decoding="async" />
             <div class="work-mask">
               <button class="icon-pill" @click="openPreview(work)" title="查看图片">👁</button>
               <button :class="{ active: work.liked }" @click="toggleLike(work)">赞 {{ work.likeCount || 0 }}</button>

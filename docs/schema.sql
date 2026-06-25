@@ -69,3 +69,37 @@ CREATE TABLE IF NOT EXISTS openai_providers (
   updated_at DATETIME,
   KEY idx_openai_providers_enabled_sort (enabled, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS artwork_likes (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  artwork_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  created_at DATETIME,
+  UNIQUE KEY uk_artwork_like_user (artwork_id, user_id),
+  KEY idx_artwork_likes_artwork (artwork_id),
+  CONSTRAINT fk_artwork_likes_artwork FOREIGN KEY (artwork_id) REFERENCES artworks(id),
+  CONSTRAINT fk_artwork_likes_user FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS artwork_favorites (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  artwork_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  created_at DATETIME,
+  UNIQUE KEY uk_artwork_favorite_user (artwork_id, user_id),
+  KEY idx_artwork_favorites_artwork (artwork_id),
+  KEY idx_artwork_favorites_user (user_id),
+  CONSTRAINT fk_artwork_favorites_artwork FOREIGN KEY (artwork_id) REFERENCES artworks(id),
+  CONSTRAINT fk_artwork_favorites_user FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS artwork_comments (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  artwork_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  content VARCHAR(500) NOT NULL,
+  created_at DATETIME,
+  KEY idx_artwork_comments_artwork (artwork_id, created_at),
+  CONSTRAINT fk_artwork_comments_artwork FOREIGN KEY (artwork_id) REFERENCES artworks(id),
+  CONSTRAINT fk_artwork_comments_user FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

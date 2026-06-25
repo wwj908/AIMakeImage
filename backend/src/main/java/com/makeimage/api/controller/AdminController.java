@@ -5,7 +5,15 @@ import com.makeimage.api.dto.ApiResponse;
 import com.makeimage.api.service.AdminService;
 import com.makeimage.api.util.SecurityUtils;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -58,5 +66,10 @@ public class AdminController {
     @PostMapping("/settings/logo")
     public ApiResponse<Map<String, String>> uploadLogo(@RequestPart("image") MultipartFile image) throws Exception {
         return ApiResponse.ok(adminService.uploadLogo(SecurityUtils.currentUser(), image));
+    }
+
+    @PostMapping("/thumbnails/regenerate")
+    public ApiResponse<Integer> regenerateThumbnails() throws Exception {
+        return ApiResponse.ok(adminService.regenerateThumbnails(SecurityUtils.currentUser()));
     }
 }

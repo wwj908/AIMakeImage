@@ -8,6 +8,7 @@ public class AppProperties {
     private long jwtExpirationHours;
     private String storageDir;
     private String publicBaseUrl;
+    private String thumbnailBaseUrl;
 
     public String getJwtSecret() {
         return jwtSecret;
@@ -39,5 +40,13 @@ public class AppProperties {
 
     public void setPublicBaseUrl(String publicBaseUrl) {
         this.publicBaseUrl = publicBaseUrl;
+    }
+
+    public String getThumbnailBaseUrl() {
+        return thumbnailBaseUrl;
+    }
+
+    public void setThumbnailBaseUrl(String thumbnailBaseUrl) {
+        this.thumbnailBaseUrl = thumbnailBaseUrl;
     }
 }

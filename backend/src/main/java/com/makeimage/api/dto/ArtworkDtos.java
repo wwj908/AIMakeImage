@@ -62,6 +62,7 @@ public class ArtworkDtos {
             String negativePrompt,
             String mode,
             String imageUrl,
+            String thumbnailUrl,
             String sourceImageUrl,
             Boolean publicWork,
             Long downloadCount,

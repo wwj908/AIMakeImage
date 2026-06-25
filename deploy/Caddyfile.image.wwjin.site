@@ -1,0 +1,15 @@
+image.wwjin.site {
+	route {
+		handle /api/* {
+			reverse_proxy 127.0.0.1:18080
+		}
+
+		handle /files/* {
+			reverse_proxy 127.0.0.1:18080
+		}
+
+		root * /www/aimakeimage/frontend
+		try_files {path} /index.html
+		file_server
+	}
+}

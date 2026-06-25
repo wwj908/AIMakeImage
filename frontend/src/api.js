@@ -1,6 +1,9 @@
 import { reactive } from 'vue'
 
-const API_BASE = import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:8080`
+const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+const API_BASE = import.meta.env.VITE_API_BASE || (
+  isLocalHost ? `${window.location.protocol}//${window.location.hostname}:8080` : window.location.origin
+)
 
 export const state = reactive({
   token: localStorage.getItem('mi_token') || '',
@@ -21,6 +24,10 @@ export function clearAuth() {
   localStorage.removeItem('mi_user')
 }
 
+function backendBaseUrl() {
+  return isLocalHost ? `${window.location.protocol}//${window.location.hostname}:8080` : window.location.origin
+}
+
 function normalizeArtworkUrls(value) {
   if (!value) return value
   if (Array.isArray(value)) return value.map(normalizeArtworkUrls)
@@ -28,10 +35,13 @@ function normalizeArtworkUrls(value) {
     return { ...value, content: value.content.map(normalizeArtworkUrls) }
   }
   if (typeof value === 'object' && value.imageUrl) {
-    const backendBase = `${window.location.protocol}//${window.location.hostname}:8080`
+    const backendBase = backendBaseUrl()
     return {
       ...value,
       imageUrl: value.imageUrl.replace('http://localhost:8080', backendBase),
+      thumbnailUrl: value.thumbnailUrl
+        ? value.thumbnailUrl.replace('http://localhost:8080', backendBase)
+        : value.thumbnailUrl,
       sourceImageUrl: value.sourceImageUrl
         ? value.sourceImageUrl.replace('http://localhost:8080', backendBase)
         : value.sourceImageUrl
@@ -56,9 +66,16 @@ async function request(path, options = {}) {
     throw new Error(`无法连接后端服务：${API_BASE}`)
   }
 
-  const payload = await res.json()
+  const contentType = res.headers.get('content-type') || ''
+  const payload = contentType.includes('application/json')
+    ? await res.json()
+    : {
+        success: false,
+        message: (await res.text()) || `请求失败 (${res.status})`
+      }
+
   if (!res.ok || !payload.success) {
-    throw new Error(payload.message || '请求失败')
+    throw new Error(payload.message || `请求失败 (${res.status})`)
   }
   return normalizeArtworkUrls(payload.data)
 }

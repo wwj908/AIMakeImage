@@ -35,6 +35,7 @@ public class ArtworkService {
     private final ArtworkLikeRepository artworkLikeRepository;
     private final ArtworkFavoriteRepository artworkFavoriteRepository;
     private final ArtworkCommentRepository artworkCommentRepository;
+    private final ThumbnailService thumbnailService;
 
     public ArtworkService(
             ArtworkRepository artworkRepository,
@@ -44,7 +45,8 @@ public class ArtworkService {
             StringRedisTemplate redisTemplate,
             ArtworkLikeRepository artworkLikeRepository,
             ArtworkFavoriteRepository artworkFavoriteRepository,
-            ArtworkCommentRepository artworkCommentRepository
+            ArtworkCommentRepository artworkCommentRepository,
+            ThumbnailService thumbnailService
     ) {
         this.artworkRepository = artworkRepository;
         this.userRepository = userRepository;
@@ -54,6 +56,7 @@ public class ArtworkService {
         this.artworkLikeRepository = artworkLikeRepository;
         this.artworkFavoriteRepository = artworkFavoriteRepository;
         this.artworkCommentRepository = artworkCommentRepository;
+        this.thumbnailService = thumbnailService;
     }
 
     @Transactional
@@ -250,6 +253,7 @@ public class ArtworkService {
                 artwork.getNegativePrompt(),
                 artwork.getMode(),
                 artwork.getImageUrl(),
+                thumbnailUrl(artwork),
                 artwork.getSourceImageUrl(),
                 artwork.getPublicWork(),
                 artwork.getDownloadCount(),
@@ -260,6 +264,23 @@ public class ArtworkService {
                 currentUserId != null && artworkFavoriteRepository.existsByArtworkIdAndUserId(artworkId, currentUserId),
                 artwork.getCreatedAt()
         );
+    }
+
+    private String thumbnailUrl(Artwork artwork) {
+        String imageUrl = artwork.getImageUrl();
+        if (imageUrl == null) {
+            return null;
+        }
+        if (!imageUrl.contains("/files/generated/")) {
+            return imageUrl;
+        }
+        String filename = imageUrl.substring(imageUrl.lastIndexOf('/') + 1);
+        try {
+            thumbnailService.ensureThumbnail(filename);
+        } catch (IOException ignored) {
+            return imageUrl;
+        }
+        return storageService.publicThumbnailUrl(filename);
     }
 
     private ArtworkDtos.CommentView toCommentView(ArtworkComment comment) {
