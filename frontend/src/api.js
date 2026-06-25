@@ -149,6 +149,10 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify({ providers })
   }),
+  adminDeploy: (payload) => request('/api/admin/deploy', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
   uploadSystemLogo: (image) => {
     const form = new FormData()
     form.append('image', image)

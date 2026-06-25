@@ -37,6 +37,13 @@ const adminUsers = ref([])
 const adminSettings = reactive({})
 const adminOpenAiProviders = ref([])
 const adminSection = ref('dashboard')
+const adminDeploying = ref(false)
+const adminDeployResult = ref(null)
+const adminDeployForm = reactive({
+  sourceUrl: 'https://github.com/wwj908/AIMakeImage/archive/refs/heads/main.zip',
+  targetDir: '/opt/aimakeimage',
+  restartCommand: 'systemctl restart aimakeimage'
+})
 const systemConfig = reactive({ name: 'MakeImage AI', logoUrl: '/image.png' })
 const conversation = ref([])
 const conversationSessions = ref(loadSessions())
@@ -865,6 +872,33 @@ async function changeUserRole(user, role) {
   }
 }
 
+async function deployFromGitHub() {
+  const sourceUrl = adminDeployForm.sourceUrl.trim()
+  const targetDir = adminDeployForm.targetDir.trim()
+  if (!sourceUrl) {
+    toast('请输入 GitHub 压缩包地址')
+    return
+  }
+  if (!targetDir) {
+    toast('请输入部署目录')
+    return
+  }
+  adminDeploying.value = true
+  try {
+    const result = await api.adminDeploy({
+      sourceUrl,
+      targetDir,
+      restartCommand: adminDeployForm.restartCommand.trim()
+    })
+    adminDeployResult.value = result
+    toast('部署已完成')
+  } catch (error) {
+    toast(error.message)
+  } finally {
+    adminDeploying.value = false
+  }
+}
+
 async function togglePublish(work) {
   try {
     const targetPublic = !work.publicWork
@@ -1051,6 +1085,7 @@ function logout() {
   myWorks.value = []
   adminStats.value = null
   adminUsers.value = []
+  adminDeployResult.value = null
   Object.keys(adminSettings).forEach((key) => delete adminSettings[key])
   conversationSessions.value = loadSessions()
   currentSessionId.value = conversationSessions.value[0]?.id || null
@@ -1409,6 +1444,7 @@ if (!conversationSessions.value.length) {
           <button type="button" :class="{ active: adminSection === 'dashboard' }" @click="adminSection = 'dashboard'">数据面板</button>
           <button type="button" :class="{ active: adminSection === 'settings' }" @click="adminSection = 'settings'">系统配置</button>
           <button type="button" :class="{ active: adminSection === 'providers' }" @click="adminSection = 'providers'">OpenAI 渠道</button>
+          <button type="button" :class="{ active: adminSection === 'deploy' }" @click="adminSection = 'deploy'">一键部署</button>
           <button type="button" :class="{ active: adminSection === 'users' }" @click="adminSection = 'users'">用户管理</button>
         </div>
 
@@ -1534,6 +1570,64 @@ if (!conversationSessions.value.length) {
                   <option value="USER">USER</option>
                   <option value="ADMIN">ADMIN</option>
                 </select>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <div v-if="adminSection === 'deploy'" class="admin-grid admin-grid-single">
+          <section class="admin-panel">
+            <div class="admin-panel-head">
+              <div>
+                <h2>GitHub 一键部署</h2>
+                <p>从 GitHub 下载 zip 包，覆盖更新 `backend`、`frontend`、`deploy`、`docs` 目录，并可选执行重启命令</p>
+              </div>
+              <button :disabled="adminDeploying" @click="deployFromGitHub">
+                {{ adminDeploying ? '部署中...' : '开始部署' }}
+              </button>
+            </div>
+            <div class="deploy-form">
+              <label>
+                <span>GitHub ZIP 地址</span>
+                <input v-model="adminDeployForm.sourceUrl" placeholder="https://github.com/owner/repo/archive/refs/heads/main.zip" />
+              </label>
+              <label>
+                <span>部署目录</span>
+                <input v-model="adminDeployForm.targetDir" placeholder="/opt/aimakeimage" />
+              </label>
+              <label class="wide">
+                <span>重启命令（可选）</span>
+                <input v-model="adminDeployForm.restartCommand" placeholder="systemctl restart aimakeimage" />
+              </label>
+            </div>
+            <div class="deploy-notes">
+              <p>仅允许 GitHub 地址，且目标目录限制在 `/opt/aimakeimage` 或 `/www/aimakeimage` 之下。</p>
+              <p>运行时数据目录如 `storage` 不会被清空，但部署目录下同名发布目录会被覆盖。</p>
+            </div>
+            <div v-if="adminDeployResult" class="deploy-result">
+              <article>
+                <span>来源地址</span>
+                <strong>{{ adminDeployResult.sourceUrl }}</strong>
+              </article>
+              <article>
+                <span>部署目录</span>
+                <strong>{{ adminDeployResult.targetDir }}</strong>
+              </article>
+              <article>
+                <span>下载大小</span>
+                <strong>{{ Math.max(1, Math.round((adminDeployResult.downloadedBytes || 0) / 1024)) }} KB</strong>
+              </article>
+              <article>
+                <span>解压文件数</span>
+                <strong>{{ adminDeployResult.extractedFiles || 0 }}</strong>
+              </article>
+              <article>
+                <span>识别发布目录</span>
+                <strong>{{ adminDeployResult.usedNestedRelease ? '是' : '否' }}</strong>
+              </article>
+              <article>
+                <span>重启结果</span>
+                <strong>{{ adminDeployResult.restarted ? adminDeployResult.restartMessage || '已执行' : '未执行' }}</strong>
               </article>
             </div>
           </section>

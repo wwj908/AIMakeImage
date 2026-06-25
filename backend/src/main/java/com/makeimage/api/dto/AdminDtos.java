@@ -59,4 +59,23 @@ public class AdminDtos {
 
     public record OpenAiProvidersRequest(List<OpenAiProviderRequest> providers) {
     }
+
+    public record DeployRequest(
+            @NotBlank String sourceUrl,
+            @NotBlank String targetDir,
+            String restartCommand
+    ) {
+    }
+
+    public record DeployResultView(
+            String sourceUrl,
+            String targetDir,
+            long downloadedBytes,
+            int extractedFiles,
+            boolean usedNestedRelease,
+            boolean restarted,
+            String restartMessage,
+            LocalDateTime finishedAt
+    ) {
+    }
 }

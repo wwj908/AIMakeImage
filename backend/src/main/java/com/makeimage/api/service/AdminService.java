@@ -26,6 +26,7 @@ public class AdminService {
     private final OpenAiProviderService openAiProviderService;
     private final StorageService storageService;
     private final ThumbnailService thumbnailService;
+    private final DeployService deployService;
 
     public AdminService(
             UserRepository userRepository,
@@ -36,7 +37,8 @@ public class AdminService {
             SystemSettingService systemSettingService,
             OpenAiProviderService openAiProviderService,
             StorageService storageService,
-            ThumbnailService thumbnailService
+            ThumbnailService thumbnailService,
+            DeployService deployService
     ) {
         this.userRepository = userRepository;
         this.artworkRepository = artworkRepository;
@@ -47,6 +49,7 @@ public class AdminService {
         this.openAiProviderService = openAiProviderService;
         this.storageService = storageService;
         this.thumbnailService = thumbnailService;
+        this.deployService = deployService;
     }
 
     public AdminDtos.StatsView stats(CurrentUser currentUser) {
@@ -113,6 +116,11 @@ public class AdminService {
     public Integer regenerateThumbnails(CurrentUser currentUser) throws Exception {
         requireAdmin(currentUser);
         return thumbnailService.generateMissingThumbnails();
+    }
+
+    public AdminDtos.DeployResultView deployFromGitHub(CurrentUser currentUser, AdminDtos.DeployRequest request) throws Exception {
+        requireAdmin(currentUser);
+        return deployService.deployFromGitHub(request);
     }
 
     private void requireAdmin(CurrentUser currentUser) {

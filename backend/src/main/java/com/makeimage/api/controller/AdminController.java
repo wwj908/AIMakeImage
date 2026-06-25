@@ -72,4 +72,9 @@ public class AdminController {
     public ApiResponse<Integer> regenerateThumbnails() throws Exception {
         return ApiResponse.ok(adminService.regenerateThumbnails(SecurityUtils.currentUser()));
     }
+
+    @PostMapping("/deploy")
+    public ApiResponse<AdminDtos.DeployResultView> deploy(@Valid @RequestBody AdminDtos.DeployRequest request) throws Exception {
+        return ApiResponse.ok(adminService.deployFromGitHub(SecurityUtils.currentUser(), request));
+    }
 }
