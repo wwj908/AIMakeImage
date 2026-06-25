@@ -153,6 +153,7 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(payload)
   }),
+  adminDeployJob: (jobId) => request(`/api/admin/deploy/${encodeURIComponent(jobId)}`),
   uploadSystemLogo: (image) => {
     const form = new FormData()
     form.append('image', image)

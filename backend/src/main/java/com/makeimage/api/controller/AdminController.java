@@ -74,7 +74,12 @@ public class AdminController {
     }
 
     @PostMapping("/deploy")
-    public ApiResponse<AdminDtos.DeployResultView> deploy(@Valid @RequestBody AdminDtos.DeployRequest request) throws Exception {
-        return ApiResponse.ok(adminService.deployFromGitHub(SecurityUtils.currentUser(), request));
+    public ApiResponse<AdminDtos.DeployJobView> deploy(@Valid @RequestBody AdminDtos.DeployRequest request) throws Exception {
+        return ApiResponse.ok(adminService.startDeployFromGitHub(SecurityUtils.currentUser(), request));
+    }
+
+    @GetMapping("/deploy/{jobId}")
+    public ApiResponse<AdminDtos.DeployJobView> deployJob(@PathVariable String jobId) {
+        return ApiResponse.ok(adminService.deployJob(SecurityUtils.currentUser(), jobId));
     }
 }

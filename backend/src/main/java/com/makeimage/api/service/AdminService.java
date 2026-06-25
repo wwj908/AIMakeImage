@@ -118,9 +118,14 @@ public class AdminService {
         return thumbnailService.generateMissingThumbnails();
     }
 
-    public AdminDtos.DeployResultView deployFromGitHub(CurrentUser currentUser, AdminDtos.DeployRequest request) throws Exception {
+    public AdminDtos.DeployJobView startDeployFromGitHub(CurrentUser currentUser, AdminDtos.DeployRequest request) {
         requireAdmin(currentUser);
-        return deployService.deployFromGitHub(request);
+        return deployService.startDeploy(request);
+    }
+
+    public AdminDtos.DeployJobView deployJob(CurrentUser currentUser, String jobId) {
+        requireAdmin(currentUser);
+        return deployService.job(jobId);
     }
 
     private void requireAdmin(CurrentUser currentUser) {

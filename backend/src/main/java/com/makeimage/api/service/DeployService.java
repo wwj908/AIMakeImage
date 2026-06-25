@@ -2,7 +2,6 @@ package com.makeimage.api.service;
 
 import com.makeimage.api.dto.AdminDtos;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -20,9 +19,14 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -38,46 +42,107 @@ public class DeployService {
             "deploy",
             "docs"
     );
+    private static final List<StepDefinition> STEP_DEFINITIONS = List.of(
+            new StepDefinition("validate", "校验参数"),
+            new StepDefinition("prepare", "准备目录"),
+            new StepDefinition("download", "下载 GitHub 包"),
+            new StepDefinition("extract", "解压文件"),
+            new StepDefinition("detect", "识别发布目录"),
+            new StepDefinition("copy", "覆盖部署文件"),
+            new StepDefinition("restart", "重启服务"),
+            new StepDefinition("cleanup", "清理临时文件")
+    );
 
+    private final Map<String, DeployJob> jobs = new ConcurrentHashMap<>();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
-    public DeployService() {
+    public AdminDtos.DeployJobView startDeploy(AdminDtos.DeployRequest request) {
+        DeployJob job = new DeployJob(UUID.randomUUID().toString(), request);
+        jobs.put(job.id, job);
+        CompletableFuture.runAsync(() -> runDeploy(job));
+        return job.toView();
     }
 
-    @Transactional
-    public AdminDtos.DeployResultView deployFromGitHub(AdminDtos.DeployRequest request) throws IOException, InterruptedException {
-        URI uri = URI.create(request.sourceUrl().trim());
-        validateSourceUrl(uri);
+    public AdminDtos.DeployJobView job(String id) {
+        DeployJob job = jobs.get(id);
+        if (job == null) {
+            throw new IllegalArgumentException("部署任务不存在");
+        }
+        return job.toView();
+    }
 
-        Path targetRoot = resolveTargetRoot(request.targetDir());
-        Files.createDirectories(targetRoot);
+    private void runDeploy(DeployJob job) {
+        URI uri = null;
+        Path targetRoot = null;
+        String normalizedTarget = "";
+        Path tempDir = null;
+        Path archive = null;
+        Path extracted = null;
+        long downloadedBytes = 0L;
+        ZipInspection inspection = null;
+        boolean restarted = false;
+        String restartMessage = "";
 
-        String normalizedTarget = targetRoot.toAbsolutePath().normalize().toString();
-        Path tempDir = Files.createTempDirectory("makeimage-deploy-");
-        Path archive = tempDir.resolve("release.zip");
-        Path extracted = tempDir.resolve("extracted");
-        Files.createDirectories(extracted);
+        job.status = "RUNNING";
+        job.message = "部署任务已开始";
+        job.touch();
 
         try {
-            long downloadedBytes = download(uri, archive);
-            ZipInspection inspection = unzip(archive, extracted);
-            Path rootToCopy = inspection.releaseRoot.orElse(extracted);
+            job.startStep("validate", "正在校验 GitHub 地址和部署目录");
+            uri = URI.create(job.request.sourceUrl().trim());
+            validateSourceUrl(uri);
+            targetRoot = resolveTargetRoot(job.request.targetDir());
+            normalizedTarget = targetRoot.toAbsolutePath().normalize().toString();
+            job.completeStep("validate", "参数校验通过");
 
+            job.startStep("prepare", "正在创建目标目录和临时目录");
+            Files.createDirectories(targetRoot);
+            tempDir = Files.createTempDirectory("makeimage-deploy-");
+            archive = tempDir.resolve("release.zip");
+            extracted = tempDir.resolve("extracted");
+            Files.createDirectories(extracted);
+            job.completeStep("prepare", "临时目录已准备: " + tempDir);
+
+            job.startStep("download", "正在从 GitHub 下载发布包");
+            downloadedBytes = download(uri, archive);
+            job.completeStep("download", "下载完成，大小 " + Math.max(1, downloadedBytes / 1024) + " KB");
+
+            job.startStep("extract", "正在解压发布包");
+            inspection = unzip(archive, extracted);
+            job.completeStep("extract", "解压完成，共 " + inspection.extractedFiles + " 个文件");
+
+            job.startStep("detect", "正在识别可部署目录");
+            Path rootToCopy = inspection.releaseRoot.orElse(extracted);
             if (!Files.isDirectory(rootToCopy)) {
                 throw new IllegalArgumentException("压缩包内未找到可部署目录");
             }
+            job.completeStep("detect", "已识别目录: " + rootToCopy.getFileName());
 
-            deployReleaseContent(rootToCopy, targetRoot);
-            boolean restarted = false;
-            String restartMessage = "";
-            if (request.restartCommand() != null && !request.restartCommand().isBlank()) {
-                restartMessage = executeRestart(request.restartCommand(), normalizedTarget);
-                restarted = true;
+            job.startStep("copy", "正在覆盖 backend/frontend/deploy/docs");
+            List<String> copied = deployReleaseContent(rootToCopy, targetRoot);
+            job.completeStep("copy", "已更新: " + String.join(", ", copied));
+
+            if (job.request.restartCommand() != null && !job.request.restartCommand().isBlank()) {
+                job.startStep("restart", "正在执行重启命令");
+                if (shouldSkipRestart(job.request.restartCommand())) {
+                    job.skipStep("restart", buildRestartSkipMessage(job.request.restartCommand()));
+                } else {
+                    restartMessage = executeRestart(job.request.restartCommand(), normalizedTarget);
+                    restarted = restartMessage.startsWith("restart ok");
+                    job.completeStep("restart", restartMessage);
+                }
+            } else {
+                job.skipStep("restart", "未填写重启命令");
             }
 
-            return new AdminDtos.DeployResultView(
+            job.startStep("cleanup", "正在清理临时文件");
+            cleanup(tempDir);
+            tempDir = null;
+            job.completeStep("cleanup", "临时文件已清理");
+
+            job.result = new AdminDtos.DeployResultView(
                     uri.toString(),
                     normalizedTarget,
                     downloadedBytes,
@@ -87,8 +152,20 @@ public class DeployService {
                     restartMessage,
                     LocalDateTime.now()
             );
-        } finally {
-            cleanup(tempDir);
+            job.status = "SUCCESS";
+            job.currentStep = "";
+            job.message = "部署完成";
+            job.touch();
+        } catch (Exception e) {
+            job.failCurrentStep(e.getMessage());
+            job.status = "FAILED";
+            job.message = e.getMessage();
+            job.touch();
+            if (tempDir != null) {
+                job.startStep("cleanup", "正在清理临时文件");
+                cleanup(tempDir);
+                job.completeStep("cleanup", "临时文件已清理");
+            }
         }
     }
 
@@ -109,7 +186,9 @@ public class DeployService {
             candidate = "/opt/aimakeimage";
         }
         Path target = Path.of(candidate).toAbsolutePath().normalize();
-        boolean allowed = ALLOWED_TARGETS.stream().anyMatch(prefix -> target.toString().startsWith(Path.of(prefix).toAbsolutePath().normalize().toString()));
+        boolean allowed = ALLOWED_TARGETS.stream()
+                .map(prefix -> Path.of(prefix).toAbsolutePath().normalize().toString())
+                .anyMatch(prefix -> target.toString().startsWith(prefix));
         if (!allowed) {
             throw new IllegalArgumentException("目标目录不在允许范围内");
         }
@@ -129,7 +208,6 @@ public class DeployService {
 
     private ZipInspection unzip(Path zipFile, Path destDir) throws IOException {
         int extractedFiles = 0;
-        List<Path> topLevelDirs = new ArrayList<>();
         try (ZipInputStream zipInputStream = new ZipInputStream(Files.newInputStream(zipFile))) {
             ZipEntry entry;
             while ((entry = zipInputStream.getNextEntry()) != null) {
@@ -143,9 +221,6 @@ public class DeployService {
                     Files.createDirectories(resolved.getParent());
                     Files.copy(zipInputStream, resolved, StandardCopyOption.REPLACE_EXISTING);
                     extractedFiles++;
-                    if (resolved.getNameCount() >= 2) {
-                        topLevelDirs.add(destDir.resolve(resolved.getName(0)));
-                    }
                 }
             }
         }
@@ -165,7 +240,7 @@ public class DeployService {
         }
     }
 
-    private void deployReleaseContent(Path releaseRoot, Path targetRoot) throws IOException {
+    private List<String> deployReleaseContent(Path releaseRoot, Path targetRoot) throws IOException {
         List<String> copied = new ArrayList<>();
         for (String relative : DEPLOY_PATHS) {
             Path source = releaseRoot.resolve(relative).normalize();
@@ -188,6 +263,7 @@ public class DeployService {
         if (copied.isEmpty()) {
             throw new IllegalArgumentException("压缩包内未找到 backend/frontend/deploy/docs 目录");
         }
+        return copied;
     }
 
     private boolean hasDeployMarkersQuietly(Path dir) {
@@ -208,8 +284,7 @@ public class DeployService {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
                 Path relative = source.relativize(dir);
-                Path currentTarget = target.resolve(relative);
-                Files.createDirectories(currentTarget);
+                Files.createDirectories(target.resolve(relative));
                 return FileVisitResult.CONTINUE;
             }
 
@@ -253,6 +328,29 @@ public class DeployService {
         }
     }
 
+    private boolean shouldSkipRestart(String restartCommand) {
+        if (!isWindows()) {
+            return false;
+        }
+        return splitCommand(restartCommand).stream()
+                .map(token -> token.toLowerCase(Locale.ROOT))
+                .anyMatch("systemctl"::equals);
+    }
+
+    private String buildRestartSkipMessage(String restartCommand) {
+        if (isWindows() && splitCommand(restartCommand).stream().anyMatch("systemctl"::equalsIgnoreCase)) {
+            return "当前环境为 Windows，已跳过 systemctl 重启";
+        }
+        return "未执行重启命令";
+    }
+
+    private static boolean isWindows() {
+        return Optional.ofNullable(System.getProperty("os.name"))
+                .orElse("")
+                .toLowerCase(Locale.ROOT)
+                .contains("win");
+    }
+
     private List<String> splitCommand(String command) {
         List<String> parts = new ArrayList<>();
         StringBuilder current = new StringBuilder();
@@ -290,5 +388,152 @@ public class DeployService {
     }
 
     private record ZipInspection(int extractedFiles, Optional<Path> releaseRoot, boolean usedNestedRelease) {
+    }
+
+    private record StepDefinition(String key, String name) {
+    }
+
+    private static final class DeployStep {
+        private final String key;
+        private final String name;
+        private String status = "PENDING";
+        private String message = "";
+        private LocalDateTime startedAt;
+        private LocalDateTime finishedAt;
+
+        private DeployStep(String key, String name) {
+            this.key = key;
+            this.name = name;
+        }
+
+        private AdminDtos.DeployStepView toView() {
+            return new AdminDtos.DeployStepView(key, name, status, message, startedAt, finishedAt);
+        }
+    }
+
+    private static final class DeployJob {
+        private final String id;
+        private final AdminDtos.DeployRequest request;
+        private final AdminDtos.DeployRuntimeView runtime;
+        private final LocalDateTime createdAt = LocalDateTime.now();
+        private final Map<String, DeployStep> steps = new LinkedHashMap<>();
+        private String status = "PENDING";
+        private String currentStep = "";
+        private String message = "等待开始";
+        private AdminDtos.DeployResultView result;
+        private LocalDateTime updatedAt = createdAt;
+
+        private DeployJob(String id, AdminDtos.DeployRequest request) {
+            this.id = id;
+            this.request = request;
+            this.runtime = detectRuntime(request.restartCommand());
+            for (StepDefinition definition : STEP_DEFINITIONS) {
+                steps.put(definition.key(), new DeployStep(definition.key(), definition.name()));
+            }
+        }
+
+        private synchronized void startStep(String key, String message) {
+            DeployStep step = steps.get(key);
+            if (step == null) {
+                return;
+            }
+            step.status = "RUNNING";
+            step.message = message;
+            step.startedAt = LocalDateTime.now();
+            step.finishedAt = null;
+            currentStep = key;
+            this.message = message;
+            touch();
+        }
+
+        private synchronized void completeStep(String key, String message) {
+            DeployStep step = steps.get(key);
+            if (step == null) {
+                return;
+            }
+            step.status = "SUCCESS";
+            step.message = message;
+            step.finishedAt = LocalDateTime.now();
+            this.message = message;
+            touch();
+        }
+
+        private synchronized void skipStep(String key, String message) {
+            DeployStep step = steps.get(key);
+            if (step == null) {
+                return;
+            }
+            step.status = "SKIPPED";
+            step.message = message;
+            step.finishedAt = LocalDateTime.now();
+            this.message = message;
+            touch();
+        }
+
+        private synchronized void failCurrentStep(String message) {
+            DeployStep step = steps.get(currentStep);
+            if (step == null) {
+                return;
+            }
+            step.status = "FAILED";
+            step.message = message == null || message.isBlank() ? "步骤执行失败" : message;
+            step.finishedAt = LocalDateTime.now();
+            touch();
+        }
+
+        private synchronized void touch() {
+            updatedAt = LocalDateTime.now();
+        }
+
+        private synchronized AdminDtos.DeployJobView toView() {
+            List<AdminDtos.DeployStepView> stepViews = steps.values().stream()
+                    .map(DeployStep::toView)
+                    .toList();
+            long finished = stepViews.stream()
+                    .filter(step -> List.of("SUCCESS", "SKIPPED", "FAILED").contains(step.status()))
+                    .count();
+            int progress = (int) Math.round(finished * 100.0 / Math.max(1, stepViews.size()));
+            if ("RUNNING".equals(status)) {
+                progress = Math.max(5, progress);
+            }
+            if ("SUCCESS".equals(status)) {
+                progress = 100;
+            }
+            return new AdminDtos.DeployJobView(id, status, currentStep, progress, message, runtime, stepViews, result, createdAt, updatedAt);
+        }
+    }
+
+    private static AdminDtos.DeployRuntimeView detectRuntime(String restartCommand) {
+        String osName = Optional.ofNullable(System.getProperty("os.name")).orElse("unknown");
+        if (isWindows()) {
+            if (restartCommand != null && restartCommand.toLowerCase(Locale.ROOT).contains("systemctl")) {
+                return new AdminDtos.DeployRuntimeView(
+                        osName,
+                        "WINDOWS",
+                        "PowerShell: Restart-Service <服务名>",
+                        "当前是 Windows，默认 systemctl 不可用"
+                );
+            }
+            return new AdminDtos.DeployRuntimeView(
+                    osName,
+                    "WINDOWS",
+                    "PowerShell: Restart-Service <服务名>",
+                    "当前是 Windows"
+            );
+        }
+        if (restartCommand != null && restartCommand.toLowerCase(Locale.ROOT).contains("docker")) {
+            return new AdminDtos.DeployRuntimeView(
+                    osName,
+                    "DOCKER",
+                    "docker restart <容器名>",
+                    "当前看起来是 Docker 部署"
+            );
+        }
+        return new AdminDtos.DeployRuntimeView(
+                osName,
+                "SYSTEMD",
+                "sudo systemctl restart aimakeimage",
+                "当前看起来是 Linux/systemd 部署"
+        );
     }
 }

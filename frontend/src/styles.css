@@ -1636,6 +1636,140 @@ p {
   line-height: 1.6;
 }
 
+.deploy-runtime {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.deploy-runtime article {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #f7f8fa;
+}
+
+.deploy-runtime span {
+  color: #8a9099;
+  font-size: 12px;
+}
+
+.deploy-runtime strong {
+  color: #1f2329;
+  word-break: break-word;
+}
+
+.deploy-progress {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid #dfe7f5;
+  background: linear-gradient(180deg, #ffffff, #f6f9ff);
+}
+
+.deploy-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.deploy-progress-head strong {
+  display: block;
+  color: #1f2329;
+  font-size: 15px;
+}
+
+.deploy-progress-head span {
+  display: block;
+  margin-top: 4px;
+  color: #7b8391;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.deploy-progress-head b {
+  color: #2f66ff;
+  font-size: 22px;
+}
+
+.deploy-progress-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9eef8;
+}
+
+.deploy-progress-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2f66ff, #6aa7ff);
+}
+
+.deploy-step-list {
+  display: grid;
+  gap: 10px;
+}
+
+.deploy-step-list article {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f7f8fa;
+}
+
+.deploy-step-list article.running {
+  background: #eef4ff;
+}
+
+.deploy-step-list article.success {
+  background: #eefaf1;
+}
+
+.deploy-step-list article.failed {
+  background: #fff1f2;
+}
+
+.deploy-step-list article.skipped {
+  background: #f5f6f8;
+}
+
+.deploy-step-list article div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.deploy-step-list strong {
+  color: #1f2329;
+}
+
+.deploy-step-list span,
+.deploy-step-list p {
+  margin: 0;
+  color: #7b8391;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.deploy-step-list article.running span {
+  color: #2f66ff;
+}
+
+.deploy-step-list article.success span {
+  color: #198754;
+}
+
+.deploy-step-list article.failed span {
+  color: #d93025;
+}
+
 .deploy-result {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2503,6 +2637,16 @@ p {
   .deploy-form,
   .deploy-result {
     grid-template-columns: 1fr;
+  }
+
+  .deploy-runtime {
+    grid-template-columns: 1fr;
+  }
+
+  .deploy-progress-head,
+  .deploy-step-list article div {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .admin-actions {

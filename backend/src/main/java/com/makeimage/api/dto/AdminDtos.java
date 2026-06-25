@@ -78,4 +78,36 @@ public class AdminDtos {
             LocalDateTime finishedAt
     ) {
     }
+
+    public record DeployRuntimeView(
+            String osName,
+            String runtime,
+            String recommendedCommand,
+            String description
+    ) {
+    }
+
+    public record DeployStepView(
+            String key,
+            String name,
+            String status,
+            String message,
+            LocalDateTime startedAt,
+            LocalDateTime finishedAt
+    ) {
+    }
+
+    public record DeployJobView(
+            String id,
+            String status,
+            String currentStep,
+            int progress,
+            String message,
+            DeployRuntimeView runtime,
+            List<DeployStepView> steps,
+            DeployResultView result,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+    }
 }

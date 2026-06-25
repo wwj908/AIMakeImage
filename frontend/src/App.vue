@@ -39,6 +39,8 @@ const adminOpenAiProviders = ref([])
 const adminSection = ref('dashboard')
 const adminDeploying = ref(false)
 const adminDeployResult = ref(null)
+const adminDeployJob = ref(null)
+let adminDeployTimer = null
 const adminDeployForm = reactive({
   sourceUrl: 'https://github.com/wwj908/AIMakeImage/archive/refs/heads/main.zip',
   targetDir: '/opt/aimakeimage',
@@ -806,6 +808,82 @@ function normalizeProviderSort(providers) {
   }))
 }
 
+function normalizeDeployJob(job) {
+  if (!job) return null
+  return {
+    ...job,
+    steps: Array.isArray(job.steps) ? job.steps : []
+  }
+}
+
+function applyRuntimeRecommendation(job) {
+  const recommended = job?.runtime?.recommendedCommand
+  if (recommended && !adminDeployForm.restartCommand.trim()) {
+    adminDeployForm.restartCommand = recommended
+  }
+}
+
+function stopDeployPolling() {
+  if (adminDeployTimer) {
+    window.clearInterval(adminDeployTimer)
+    adminDeployTimer = null
+  }
+}
+
+async function syncDeployJob(jobId) {
+  if (!jobId) return
+  try {
+    const job = normalizeDeployJob(await api.adminDeployJob(jobId))
+    adminDeployJob.value = job
+    applyRuntimeRecommendation(job)
+    if (job?.status === 'SUCCESS') {
+      adminDeployResult.value = job.result || adminDeployResult.value
+      stopDeployPolling()
+      toast('部署已完成')
+    }
+    if (job?.status === 'FAILED') {
+      adminDeployResult.value = null
+      stopDeployPolling()
+      toast(job.message || '部署失败')
+    }
+  } catch (error) {
+    toast(error.message)
+    stopDeployPolling()
+  }
+}
+
+function startDeployPolling(jobId) {
+  stopDeployPolling()
+  if (!jobId) return
+  adminDeployTimer = window.setInterval(() => {
+    syncDeployJob(jobId)
+  }, 1200)
+}
+
+function deployStatusText(status) {
+  return {
+    PENDING: '等待中',
+    RUNNING: '进行中',
+    SUCCESS: '完成',
+    FAILED: '失败'
+  }[status] || status || '未知'
+}
+
+function stepStatusText(status) {
+  return {
+    PENDING: '未开始',
+    RUNNING: '进行中',
+    SUCCESS: '已完成',
+    SKIPPED: '已跳过',
+    FAILED: '失败'
+  }[status] || status || '未知'
+}
+
+function runtimeText(runtime) {
+  if (!runtime) return '自动识别中'
+  return `${runtime.runtime} · ${runtime.description}`
+}
+
 function addOpenAiProvider() {
   adminOpenAiProviders.value.push({
     id: null,
@@ -884,14 +962,23 @@ async function deployFromGitHub() {
     return
   }
   adminDeploying.value = true
+  adminDeployResult.value = null
+  adminDeployJob.value = null
   try {
-    const result = await api.adminDeploy({
+    const job = normalizeDeployJob(await api.adminDeploy({
       sourceUrl,
       targetDir,
       restartCommand: adminDeployForm.restartCommand.trim()
-    })
-    adminDeployResult.value = result
-    toast('部署已完成')
+    }))
+    adminDeployJob.value = job
+    applyRuntimeRecommendation(job)
+    if (job?.id) {
+      startDeployPolling(job.id)
+      await syncDeployJob(job.id)
+    }
+    if (job?.status !== 'SUCCESS') {
+      toast('部署已开始')
+    }
   } catch (error) {
     toast(error.message)
   } finally {
@@ -1086,6 +1173,8 @@ function logout() {
   adminStats.value = null
   adminUsers.value = []
   adminDeployResult.value = null
+  adminDeployJob.value = null
+  stopDeployPolling()
   Object.keys(adminSettings).forEach((key) => delete adminSettings[key])
   conversationSessions.value = loadSessions()
   currentSessionId.value = conversationSessions.value[0]?.id || null
@@ -1127,6 +1216,7 @@ onUnmounted(() => {
   if (emailCodeTimer) {
     window.clearInterval(emailCodeTimer)
   }
+  stopDeployPolling()
   sessionMenuId.value = null
 })
 
@@ -1603,6 +1693,37 @@ if (!conversationSessions.value.length) {
             <div class="deploy-notes">
               <p>仅允许 GitHub 地址，且目标目录限制在 `/opt/aimakeimage` 或 `/www/aimakeimage` 之下。</p>
               <p>运行时数据目录如 `storage` 不会被清空，但部署目录下同名发布目录会被覆盖。</p>
+            </div>
+            <div v-if="adminDeployJob?.runtime" class="deploy-runtime">
+              <article>
+                <span>当前环境</span>
+                <strong>{{ runtimeText(adminDeployJob.runtime) }}</strong>
+              </article>
+              <article>
+                <span>推荐重启命令</span>
+                <strong>{{ adminDeployJob.runtime.recommendedCommand || '无' }}</strong>
+              </article>
+            </div>
+            <div v-if="adminDeployJob" class="deploy-progress">
+              <div class="deploy-progress-head">
+                <div>
+                  <strong>部署进度</strong>
+                  <span>{{ deployStatusText(adminDeployJob.status) }} · {{ adminDeployJob.message }}</span>
+                </div>
+                <b>{{ adminDeployJob.progress }}%</b>
+              </div>
+              <div class="deploy-progress-bar">
+                <i :style="{ width: `${adminDeployJob.progress}%` }"></i>
+              </div>
+              <div class="deploy-step-list">
+                <article v-for="step in adminDeployJob.steps" :key="step.key" :class="step.status.toLowerCase()">
+                  <div>
+                    <strong>{{ step.name }}</strong>
+                    <span>{{ stepStatusText(step.status) }}</span>
+                  </div>
+                  <p>{{ step.message || '等待执行' }}</p>
+                </article>
+              </div>
             </div>
             <div v-if="adminDeployResult" class="deploy-result">
               <article>
